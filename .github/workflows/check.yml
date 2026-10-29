@@ -1,0 +1,31 @@
+name: Check
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Reproduce committed bundle twice
+        shell: pwsh
+        run: |
+          $before=(Get-FileHash -Algorithm SHA256 -LiteralPath client.js).Hash
+          node scripts/build-client.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          if((Get-FileHash -Algorithm SHA256 -LiteralPath client.js).Hash -ne $before){throw 'First build differs'}
+          node scripts/build-client.mjs
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+          if((Get-FileHash -Algorithm SHA256 -LiteralPath client.js).Hash -ne $before){throw 'Second build differs'}
+      - run: node --test test/*.test.mjs

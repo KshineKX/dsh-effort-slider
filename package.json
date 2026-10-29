@@ -1,0 +1,71 @@
+{
+  "name": "dsh-effort-slider",
+  "version": "0.2.3",
+  "private": true,
+  "description": "DSH 的 Codex 风格推理滑杆：Ultra(max)/Fast 会话提示词注入、不透明手柄与 Tooltip、连续拖动松手吸附。基于两个 MIT 上游改进；不增加额度或直接加速模型。",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "reasoning-effort",
+    "codex",
+    "composer",
+    "system-prompt"
+  ],
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib/",
+    "vendor/",
+    "scripts/",
+    "docs/",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "LICENSES/",
+    "README.md",
+    "HANDOFF.md",
+    "CHANGELOG.md",
+    "NOTICE.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.1 <0.3.0-0",
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "check": "node --check index.js && node --check client.js && node test/host.test.mjs && node test/client-load.test.mjs && node test/client-static.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KshineKX/dsh-effort-slider.git"
+  },
+  "homepage": "https://github.com/KshineKX/dsh-effort-slider#readme",
+  "bugs": {
+    "url": "https://github.com/KshineKX/dsh-effort-slider/issues"
+  }
+}

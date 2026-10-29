@@ -1,0 +1,12 @@
+# dsh-effort-slider bundle patch：一行装配进 profile。
+#
+# 宿主半（index.js）注册 system prompt 段落与 /effort-slider/state 路由；
+# 浏览器半（client.js）在 composer 工具条注册「思考强度」滑杆芯片。
+#
+# 默认配置如需覆盖，在 profile 的 cordis.patch.yml 里加：
+#   - id: effort-slider
+#     config:
+#       notice: '你的 token 预算无上限……'
+- insert:
+    - id: effort-slider
+      name: dsh-effort-slider
