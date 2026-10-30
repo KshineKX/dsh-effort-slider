@@ -32,5 +32,7 @@ jobs:
         run: node test/host.test.mjs
       - name: Bundle invariants (geometry, colours, fast mode, deferral)
         run: node test/client-static.test.mjs
+      - name: Component behaviour (queue, reset failure, preview)
+        run: node test/client-behavior.test.mjs
       - name: ModuleLoader smoke test
         run: node test/client-load.test.mjs

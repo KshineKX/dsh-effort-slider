@@ -113,7 +113,9 @@ window.__ModuleLoader__.load({
       .dsh-codex-reasoning-effort-slider-sparks{opacity:0;transition:width .18s cubic-bezier(.2,.8,.2,1),opacity .25s ease}
       .dsh-codex-reasoning-effort-slider-popup.fast-mode .dsh-codex-reasoning-effort-slider-sparks{opacity:1;transition-delay:0s,.18s}
       .dsh-codex-reasoning-effort-slider-popup.ultra .dsh-codex-reasoning-effort-slider-sparks{opacity:1}
-      .dsh-codex-reasoning-effort-slider-particles{display:block;width:var(--dsh-codex-reasoning-effort-slider-rail-width,248px);height:26px}
+      .dsh-codex-reasoning-effort-slider-sparks-track{position:absolute;inset:0;display:flex;width:200%;height:26px;will-change:transform;animation:dsh-codex-reasoning-effort-slider-sparkdrift var(--dsh-codex-reasoning-effort-slider-spark-duration,2.75s) linear infinite}
+      .dsh-codex-reasoning-effort-slider-particles{display:block;flex:0 0 50%;width:50%;height:26px}
+      @keyframes dsh-codex-reasoning-effort-slider-sparkdrift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}
       .dsh-codex-reasoning-effort-slider-knob{position:absolute;z-index:2;left:calc((100% - 26px)*var(--dsh-codex-reasoning-effort-slider-pos,0));top:0;width:26px;height:26px;border-radius:50%;background:linear-gradient(180deg,#ffffff 0%,#eef0f3 100%);box-shadow:0 1px 3px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.9);border:1px solid rgba(0,0,0,.22);pointer-events:auto;cursor:grab;transform:scale(1);transition:left .18s cubic-bezier(.2,.8,.2,1),transform .14s ease}
       .dsh-codex-reasoning-effort-slider-knob:hover,.dsh-codex-reasoning-effort-slider-rail.dragging .dsh-codex-reasoning-effort-slider-knob{transform:none;box-shadow:0 1px 3px rgba(0,0,0,.35),0 0 0 3px rgba(255,255,255,.22)}
       .dsh-codex-reasoning-effort-slider-rail.dragging .dsh-codex-reasoning-effort-slider-knob{cursor:grabbing}
@@ -165,12 +167,13 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('');
       const [busy, setBusy] = useState(false);
       const rootRef = useRef(null), popupRef = useRef(null), railRef = useRef(null);
-      const canvasRef = useRef(null), burstRef = useRef(null), triggerRef = useRef(null);
+      const canvasRef = useRef(null), burstRef = useRef(null), triggerRef = useRef(null), trackRef = useRef(null);
       const previewRef = useRef(null), dragRef = useRef(false), dragPointerRef = useRef(null), mountedRef = useRef(true);
       const busyRef = useRef(false);
       const lockedRef = useRef(false);
       const pendingRef = useRef(null);
       const deferTimerRef = useRef(null);
+      const fastWriteSeqRef = useRef(0);
       const timersRef = useRef([]);
       const latest = useRef({});
       const hostRef = useRef(undefined);
@@ -221,26 +224,19 @@ window.__ModuleLoader__.load({
       }, [sessionId]);
       useEffect(() => { syncThrottleRef.current(savedEffort); }, [savedEffort]);
 
-      // 运行中被挂起的档位：等回合结束、滑块重新可用时再补提交，而不是直接丢掉用户的意图。
+      // 运行中被挂起的操作：等回合结束再补提交，而不是直接丢掉用户的意图。
       useEffect(() => {
         if (disabled || !pendingRef.current) return;
-        let cancelled = false;
-        const timer = setInterval(async () => {
-          if (cancelled || busyRef.current) return;
-          const busy = await sessionBusy();
-          if (cancelled || busy || !pendingRef.current) return;
-          const next = pendingRef.current;
-          pendingRef.current = null;
-          clearInterval(timer);
-          lockedRef.current = true;
-          chooseEffort(next);
-        }, 1200);
-        return () => { cancelled = true; clearInterval(timer); };
+        scheduleDeferredCommit();
       }, [disabled]);
 
       useEffect(() => {
         if (available) load();
       }, [available, load]);
+      useEffect(() => () => {
+        stopDeferTimer();
+        pendingRef.current = null;
+      }, [sessionId]);
       useLayoutEffect(() => {
         if (open) {
           setPresent(true);
@@ -254,7 +250,8 @@ window.__ModuleLoader__.load({
         return () => {
           mountedRef.current = false;
           timersRef.current.forEach(clearTimeout);
-          if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
+          stopDeferTimer();
+          pendingRef.current = null;
         };
       }, []);
       function enterUltra() {
@@ -299,56 +296,67 @@ window.__ModuleLoader__.load({
         } catch { return false; }
         return false;
       }
+      function stopDeferTimer() {
+        if (deferTimerRef.current !== null) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; }
+      }
+      // 回合进行中只记住完整目标选择（provider/model/effort）；只存 effort 会丢模型。
+      function scheduleDeferredCommit() {
+        if (deferTimerRef.current !== null) return;
+        deferTimerRef.current = setInterval(async () => {
+          const target = pendingRef.current;
+          if (!target) { stopDeferTimer(); return; }
+          if (busyRef.current) return;
+          if (await sessionBusy()) return;
+          if (pendingRef.current !== target) return;
+          pendingRef.current = null;
+          stopDeferTimer();
+          lockedRef.current = true;
+          void commit(target);
+        }, 1200);
+      }
       async function commit(next) {
-        if (disabled || busyRef.current || !next) return;
+        if (!next) return;
+        if (busyRef.current) return;
+        if (disabled) { pendingRef.current = next; scheduleDeferredCommit(); return; }
         busyRef.current = true;
         setBusy(true);
         setError('');
+        let queued = false;
         try {
-          // 二次确认：走到这里才发现回合已经开始，就把提交交还给挂起队列。
+          // 走到这里才发现回合已经开始：完整保留目标选择，等回合结束再提交。
           if (await sessionBusy()) {
-            pendingRef.current = next.reasoningEffort ?? null;
-            const wanted = next.reasoningEffort ?? null;
-            if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
-            deferTimerRef.current = setInterval(async () => {
-              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
-              if (await sessionBusy()) return;
-              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
-              clearInterval(deferTimerRef.current);
-              deferTimerRef.current = null;
-              chooseEffort(wanted);
-            }, 1200);
+            queued = true;
+            pendingRef.current = next;
+            scheduleDeferredCommit();
             return;
           }
           const result = await select(next);
           if (result && !result.ok) throw new Error(result.error?.message || t('failed'));
           if (result === undefined) throw new Error(t('unavailable'));
-          // 真正落盘成功，清掉挂起意图
-          if (pendingRef.current === next.reasoningEffort) pendingRef.current = null;
+          if (pendingRef.current === next) pendingRef.current = null;
         } catch (cause) {
+          if (pendingRef.current === next) { pendingRef.current = null; stopDeferTimer(); }
           if (mountedRef.current) setError(cause.message || t('failed'));
         } finally {
           busyRef.current = false;
           if (mountedRef.current) {
             setBusy(false);
-            setPreview(null);
-            previewRef.current = null;
+            // 挂起的操作保留预览，让用户看到意图已被接住；提交完成或失败后才清掉。
+            if (!queued) { setPreview(null); previewRef.current = null; }
           }
         }
       }
       function chooseEffort(id) {
         if (!selection || busyRef.current || !efforts.some(e => e.id === id)) return;
-        // 运行中不落盘：先记住用户的意图，回合结束后由轮询 effect 补提交。
-        // 否则宿主把旧档位的 thinking 块写进历史、新档位发下一次请求，API 直接 400。
+        // 运行中不落盘：先记住完整的意图，回合结束后由轮询补提交。
         showEffort(id);
         if (id === savedEffort) {
           pendingRef.current = null;
+          stopDeferTimer();
           previewRef.current = null;
           setPreview(null);
           return;
         }
-        pendingRef.current = id;
-        // commit() 内部会再向 sessions 确认一次；这里不提前拦截，避免 UI 状态滞后导致漏提交。
         void commit({ ...selection, reasoningEffort: id });
       }
       function close() {
@@ -404,57 +412,64 @@ window.__ModuleLoader__.load({
       }, [open]);
       useEffect(() => {
         if (!present || pane !== 'effort') return;
-        let frame = 0, last = 0, width = 248;
-        const rail = railRef.current, canvas = canvasRef.current, burst = burstRef.current;
+        let frame = 0, width = 248, drawnWidth = -1;
+        const rail = railRef.current, canvas = canvasRef.current, burst = burstRef.current, track = trackRef.current;
         if (!rail || !canvas || !burst) return;
-        const ctx = canvas.getContext('2d'), bctx = burst.getContext('2d');
+        const bctx = burst.getContext('2d');
+        // 白点画一次进位图，漂移交给 CSS transform（合成线程），主线程忙时也不卡。
+        const sprites = [canvas];
+        if (track && track.children.length < 2) {
+          const twin = document.createElement('canvas');
+          twin.className = 'dsh-codex-reasoning-effort-slider-particles';
+          twin.setAttribute('aria-hidden', 'true');
+          track.appendChild(twin);
+        }
+        if (track && track.children[1]) sprites.push(track.children[1]);
         const observer = new ResizeObserver(entries => {
           width = entries[0].contentRect.width || 248;
-          canvas.width = Math.round(width * 2);
           rail.style.setProperty('--dsh-codex-reasoning-effort-slider-rail-width', `${width}px`);
         });
         observer.observe(rail);
+        function paintDots(pixelWidth) {
+          for (const surface of sprites) {
+            surface.width = Math.round(pixelWidth * 2);
+            surface.height = 52;
+            const context = surface.getContext('2d');
+            context.clearRect(0, 0, surface.width, surface.height);
+            context.fillStyle = '#fff';
+            particleSeeds.forEach(([px, py], i) => {
+              const phase = i * 2.39;
+              const x = ((px / 346 * pixelWidth) % pixelWidth) * 2;
+              const y = (py + Math.cos(phase) * .55) * 26 / 36 * 2;
+              const radius = (i % 7 === 0 ? 2.1 : i % 4 === 0 ? 1.55 : 1.1) * 26 / 36;
+              context.globalAlpha = .62 + .26 * (.5 + .5 * Math.sin(phase * 1.1));
+              context.beginPath(); context.arc(x, y, radius * 2, 0, Math.PI * 2); context.fill();
+            });
+            context.globalAlpha = 1;
+          }
+          drawnWidth = pixelWidth;
+        }
         function draw(time) {
-          const delta = last ? Math.min(time - last, 50) / 1000 : 0;
-          last = time;
+          if (Math.abs(width - drawnWidth) > 0.5) paintDots(width);
           const current = latest.current;
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
-          const target = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0;
-          if (target !== m.target) {
-            m.from = m.speed; m.target = target; m.changedAt = time;
-          }
-          const p = Math.min(1, Math.max(0, (time - m.changedAt) / (m.target ? 600 : 750)));
-          m.speed = m.from + (m.target - m.from) * p * p * (3 - 2 * p);
-          if (current.ultra || current.fast) m.travel += delta * m.speed;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
+          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (2.75 / Math.max(speed, 0.05)).toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
-          if (current.open) {
-            const t = time / 1000, speed = current.ultra || current.fast ? m.speed : 0;
-            particleSeeds.forEach(([px, py], i) => {
-              const phase = i * 2.39;
-              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : current.fast ? m.travel * (70 + i % 6 * 9) : 0;
-              const x = ((px / 346 * width - offset + Math.sin(t * 9 + phase) * .7 * (1 - speed)) % width + width) % width;
-              const y = (py + Math.cos(t * 10 + phase) * .55 * (1 - speed) + Math.sin(t * 1.3 + phase) * .8 * speed) * 26 / 36;
-              const idle = .55 + .3 * (.5 + .5 * Math.sin(t * 1.1 + phase));
-              const moving = .3 + .45 * (.5 + .5 * Math.sin(t * 2.4 + phase));
-              const radius = (i % 7 === 0 ? 2.1 : i % 4 === 0 ? 1.55 : 1.1) * 26 / 36;
-              ctx.beginPath(); ctx.arc(x * 2, y * 2, radius * 2, 0, Math.PI * 2);
-              ctx.fillStyle = `rgba(255,255,255,${idle + (moving - idle) * speed})`; ctx.fill();
-            });
-            if (m.burst && time - m.burst < 520) {
-              const age = (time - m.burst) / 1000;
-              for (let i = 0; i < 22; i++) {
-                const angle = i * 2.399 + .18;
-                const x = 72 + Math.cos(angle) * (43 + (48 + i % 5 * 12) * age * 2);
-                const y = 72 + Math.sin(angle) * (43 + (48 + i % 4 * 10) * age * 2);
-                bctx.beginPath(); bctx.arc(x, y, (i % 6 === 0 ? 2.3 : 1.35) * 2 * (1 - age), 0, Math.PI * 2);
-                bctx.fillStyle = `rgba(165,107,233,${.7 * (1 - age / .52)})`; bctx.fill();
-              }
+          if (current.open && m.burst && time - m.burst < 520) {
+            const age = (time - m.burst) / 1000;
+            for (let i = 0; i < 22; i++) {
+              const angle = i * 2.399 + .18;
+              const x = 72 + Math.cos(angle) * (43 + (48 + i % 5 * 12) * age * 2);
+              const y = 72 + Math.sin(angle) * (43 + (48 + i % 4 * 10) * age * 2);
+              bctx.beginPath(); bctx.arc(x, y, (i % 6 === 0 ? 2.3 : 1.35) * 2 * (1 - age), 0, Math.PI * 2);
+              bctx.fillStyle = 'rgba(165,107,233,' + (.7 * (1 - age / .52)) + ')'; bctx.fill();
             }
           }
           frame = requestAnimationFrame(draw);
         }
+        paintDots(width);
         frame = requestAnimationFrame(draw);
         return () => { cancelAnimationFrame(frame); observer.disconnect(); };
       }, [efforts.length, pane, present]);
@@ -564,13 +579,21 @@ window.__ModuleLoader__.load({
           modelsView,
           h('div', { className: `dsh-codex-reasoning-effort-slider-pane dsh-codex-reasoning-effort-slider-main${pane !== 'effort' ? ' hidden' : ''}`, inert: pane !== 'effort' ? '' : undefined },
             h('button', { className: `dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-fast${fast ? ' active' : ''}`, 'aria-label': t('fast'), 'aria-pressed': fast, onClick: () => {
+                const previousFast = fast;
+                const targetSession = sessionId;
+                const seq = ++fastWriteSeqRef.current;
                 const nextFast = !fast;
                 setFast(nextFast);
-                if (sessionId) {
-                  writeFastState(sessionId, nextFast).then(payload => {
+                if (targetSession) {
+                  writeFastState(targetSession, nextFast).then(payload => {
+                    if (seq !== fastWriteSeqRef.current || sessionId !== targetSession) return;
                     hostRef.current = { ...hostRef.current, fast: payload.fast === true };
                     setFast(payload.fast === true);
-                  }).catch(() => {});
+                  }).catch(() => {
+                    if (seq !== fastWriteSeqRef.current || sessionId !== targetSession) return;
+                    setFast(previousFast);
+                    setError(t('failed'));
+                  });
                 }
               } },
               h('svg', { className: 'dsh-codex-reasoning-effort-slider-bolt', viewBox: '0 0 24 24', 'aria-hidden': true },
@@ -583,12 +606,19 @@ window.__ModuleLoader__.load({
             h('div', { className: 'dsh-codex-reasoning-effort-slider-warning' }, h('span', null, t('warning'))),
             h('button', { className: 'dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-reset', disabled: busy || !model?.reasoning, 'aria-label': t('reset'),
               onClick: () => {
+                const previousFast = fast;
+                const targetSession = sessionId;
                 setFast(false);
-                if (sessionId) {
-                  writeFastState(sessionId, false).then(payload => {
+                if (targetSession) {
+                  writeFastState(targetSession, false).then(payload => {
+                    if (sessionId !== targetSession) return;
                     hostRef.current = { ...hostRef.current, fast: payload.fast === true };
                     setFast(payload.fast === true);
-                  }).catch(() => {});
+                  }).catch(() => {
+                    if (sessionId !== targetSession) return;
+                    setFast(previousFast);
+                    setError(t('failed'));
+                  });
                 }
                 chooseEffort(model?.reasoning?.defaultEffort);
               }
@@ -605,7 +635,9 @@ window.__ModuleLoader__.load({
             ...efforts.map((effort, i) => h('i', { key: effort.id,
               className: `dsh-codex-reasoning-effort-slider-dot${i <= index ? ' passed' : ''}${i < index ? ' covered' : ''}${hovered === i ? ' hovered' : ''}`,
               style: { '--dsh-codex-reasoning-effort-slider-tick': efforts.length > 1 ? i / (efforts.length - 1) : 0 } })),
-            h('div', { className: 'dsh-codex-reasoning-effort-slider-sparks' }, h('canvas', { ref: canvasRef, className: 'dsh-codex-reasoning-effort-slider-particles', width: 496, height: 52 })),
+            h('div', { className: 'dsh-codex-reasoning-effort-slider-sparks' },
+              h('div', { className: 'dsh-codex-reasoning-effort-slider-sparks-track', ref: trackRef },
+                h('canvas', { ref: canvasRef, className: 'dsh-codex-reasoning-effort-slider-particles', width: 496, height: 52 }))),
             h('div', { className: 'dsh-codex-reasoning-effort-slider-knob' }), h('canvas', { ref: burstRef, className: 'dsh-codex-reasoning-effort-slider-burst', width: 144, height: 144 }))
               : h('div', { className: 'dsh-codex-reasoning-effort-slider-noeffort' }, t('unsupported'))),
           busy ? h('div', { className: 'dsh-codex-reasoning-effort-slider-sr', role: 'status' }, t('busy')) : null,

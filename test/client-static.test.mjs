@@ -25,11 +25,15 @@ test('per-stop accent colours: Low green, High blue, Ultra purple, via data-effo
   assert.ok(source.includes("'data-effort': savedEffort || ''"))
 })
 
-test('fast mode makes the spark dots drift left, slower than ultra, high a bit faster than low', () => {
+test('fast mode drifts the spark dots on the compositor, high faster than low', () => {
+  assert.match(source, /\.dsh-codex-reasoning-effort-slider-sparks-track\{[^}]*animation:dsh-codex-reasoning-effort-slider-sparkdrift/)
+  assert.match(source, /@keyframes dsh-codex-reasoning-effort-slider-sparkdrift\{from\{transform:translate3d\(0,0,0\)\}to\{transform:translate3d\(-50%,0,0\)\}\}/)
   assert.match(source, /const effortSpeed = current\.effort === 'low' \? 0\.18 : current\.effort === 'high' \? 0\.45 : 0\.3/)
+  assert.match(source, /const speed = current\.ultra \? \(current\.fast \? 1 : 0\.65\) : current\.fast \? effortSpeed : 0\.65/)
+  assert.match(source, /\(2\.75 \/ Math\.max\(speed, 0\.05\)\)\.toFixed\(2\)/)
   assert.match(source, /effort: displayed/)
-  assert.match(source, /if \(current\.ultra \|\| current\.fast\) m\.travel \+= delta \* m\.speed/)
-  assert.match(source, /current\.fast \? m\.travel \* \(70 \+ i % 6 \* 9\)/)
+  assert.ok(!source.includes('m.travel'), 'the per-frame particle travel must be gone; CSS owns the drift')
+  assert.ok(/paintDots\(width\)/.test(source), 'the dot sprite must be painted once, not every frame')
 })
 
 test('client bundle replaces the composer model seat through the documented priority rule', () => {
@@ -92,20 +96,25 @@ test('ultra stop arms the throttle and the bolt toggles a real fast-mode prompt'
   assert.match(source, /writeHostState\(sessionId, want/)
   assert.match(source, /readHostState\(sessionId\)/)
   assert.match(source, /syncThrottleRef\.current\(savedEffort\)/)
-  assert.match(source, /writeFastState\(sessionId, nextFast\)/)
+  assert.match(source, /writeFastState\(targetSession, nextFast\)/)
   assert.match(source, /setFast\(payload\.fast === true\)/)
 })
 
-test('reset to default also clears the host fast record', () => {
+test('reset to default also clears the host fast record and rolls back on failure', () => {
   assert.match(
     source,
-    /onClick: \(\) => \{\s*setFast\(false\);\s*if \(sessionId\) \{\s*writeFastState\(sessionId, false\)\.then\(/,
+    /onClick: \(\) => \{\s*const previousFast = fast;\s*const targetSession = sessionId;\s*setFast\(false\);\s*if \(targetSession\) \{\s*writeFastState\(targetSession, false\)\.then\(/,
     'reset must POST fast:false, not only flip the local state',
   )
   assert.match(
     source,
-    /writeFastState\(sessionId, false\)\.then\(payload => \{[^]*?setFast\(payload\.fast === true\)/,
+    /writeFastState\(targetSession, false\)\.then\(payload => \{[^]*?setFast\(payload\.fast === true\)/,
     'reset must adopt the host answer, like the bolt toggle does',
+  )
+  assert.match(
+    source,
+    /setFast\(previousFast\);\s*setError\(t\('failed'\)\)/,
+    'a failed host write must restore the previous Fast state and surface an error',
   )
 })
 
@@ -115,12 +124,14 @@ test('busy probe reads the real session snapshot instead of the removed turnOf h
   assert.match(source, /typeof snapshot\.running === 'boolean'\) return snapshot\.running/)
 })
 
-test('a stop picked mid-turn is queued and applied after the turn ends', () => {
+test('a stop picked mid-turn queues the full selection and keeps its preview', () => {
   assert.match(source, /const deferTimerRef = useRef\(null\)/)
-  assert.match(source, /pendingRef\.current = next\.reasoningEffort \?\? null/)
-  assert.match(source, /deferTimerRef\.current = setInterval\(async \(\) => \{/)
+  assert.match(source, /pendingRef\.current = next/)
+  assert.match(source, /function scheduleDeferredCommit\(\)/)
+  assert.match(source, /void commit\(target\)/)
   assert.match(source, /if \(await sessionBusy\(\)\) return;/)
-  assert.match(source, /chooseEffort\(wanted\)/)
+  assert.match(source, /if \(!queued\) \{ setPreview\(null\); previewRef\.current = null; \}/)
+  assert.match(source, /stopDeferTimer\(\);\s*pendingRef\.current = null;/, 'session change and unmount must clear the queue')
 })
 
 test('client bundle only talks to the loopback host route and same-origin', () => {

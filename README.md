@@ -113,16 +113,18 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
    `data-effort` 驱动，和主题无关。
 7. **Fast 粒子流动**：开启小闪电后，填充区的白点向左漂移，且**档位越高越快**：
    Low `0.18×`、High `0.45×`（约为 Low 的 2.5 倍，肉眼可见的差异）、Ultra 单独 `0.65×`、
-   Ultra+Fast `1.0×`。
+   Ultra+Fast `1.0×`。0.2.10 起白点位图只画一次，漂移由 CSS `transform` 在合成层完成，
+   任务跑起来、主线程流式渲染时也不会掉帧。
 8. **Fast 变有用**：注入「快速模式」提示词（见下），不再只是视觉动画。
 9. **Host 联动**：模块 id、`/effort-slider/state` 两路状态同步、Ultra 档标题提示。
 10. **重置真的会关掉快速模式**：上游的 Fast 只是装饰，reset 只翻转本地状态；本仓库的 Fast 是真实
-    注入，所以 reset 现在同时向 Host 发送 `fast: false`，弹层闪电、触发器与注入状态保持一致。
+    注入，所以 reset 同时向 Host 发送 `fast: false`；写入失败会回滚显示并提示，不会出现「界面关了、
+    Host 还开着」。
 11. **回合进行中改档会排队到回合结束**：用 `sessions.binding(id).session.getSnapshot().running`
-    判断真实运行状态（DSH 0.2.x 没有 `turnOf/isRunning` 这类方法），回合结束后自动补交，避免
-    thinking 历史与请求档位错配。
+    判断真实运行状态（DSH 0.2.x 没有 `turnOf/isRunning` 这类方法），队列保存**完整选择**
+    （provider/model/effort），回合结束后补交；排队期间保留所选档位预览。
 12. 预览与自检：`scripts/build-client.mjs` 可重复产出 bundle，测试里锁定滑轨几何、实体手柄、
-    工具提示不透明、档位配色、粒子流动、拖动逻辑，以及 reset / 排队两条 Host 联动。
+    工具提示不透明、档位配色、合成层粒子、拖动逻辑、reset/排队行为（含 VM 组件回调测试）。
 
 快速模式的注入文本（可配置）：
 

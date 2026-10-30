@@ -1,4 +1,4 @@
-# HANDOFF · dsh-effort-slider 0.2.9
+# HANDOFF · dsh-effort-slider 0.2.10
 
 给 Codex / 审阅者的交接说明。先读这份，再按「验证」跑一遍，最后按「Review 重点」看代码。
 
@@ -47,17 +47,18 @@ dsh.plugin.json             插件描述（client.main）
 
 ```bat
 node scripts/build-client.mjs
-:: expected: built .../client.js (50299 bytes)
+:: expected: built .../client.js (51534 bytes)
 
-node test/host.test.mjs          :: 8 pass
-node test/client-static.test.mjs :: 14 pass
-node test/client-load.test.mjs   :: 1 pass
+node test/host.test.mjs             :: 8 pass
+node test/client-static.test.mjs    :: 14 pass
+node test/client-load.test.mjs      :: 1 pass
+node test/client-behavior.test.mjs  :: 9 pass   (真实组件回调 + hook 调度夹具)
 
 :: 验证注入真的进了 system prompt（读会话日志的 system/message 事件）
 node tools/inspect-session.mjs
 ```
 
-构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `F2B616C0…8EFAD7`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
+构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `56B5AF75…34ED57`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
 
 > 注意：注入发生在 system prompt，不在模型 CoT。`tools/inspect-session.mjs` 读的是 DSH 会话日志
 > `~/.dsh/sessions/<cwd>/<session>/session.v4.jsonl.zstd` 里的 `system/message` 事件（source 为
@@ -115,6 +116,13 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 15. 回合内改档（0.2.9）：busy 探测改读 `SessionBinding.session` 快照的 `running`；挂起的档位由 `deferTimerRef`
     独立轮询，回合结束后补交（不再依赖 `disabled` 变化触发）。
 16. 回归测试锁定上述两条：reset 必清 Host Fast、busy 探测必读快照、挂起档位必须排队补交。
+17. 排队保存完整选择（0.2.10）：队列存 `{ provider, model, reasoningEffort }`，回合结束后提交完整目标选择；
+    此前只存 effort，切模型时会提交成「旧模型 + 新模型默认档」。
+18. Host 写入失败一致性（0.2.10）：reset 与 Fast 开关在写入失败时回滚显示并 `setError`；Fast 写入带序号，
+    过期回复不覆盖新状态。
+19. 挂起态预览（0.2.10）：排队期间保留所选档位预览，提交/失败/取消/卸载/切会话才清；不再立刻跳回旧档。
+20. 粒子漂移改合成层（0.2.10）：白点位图只画一次，漂移由 CSS `transform` 跑马灯完成（`sparkdrift` keyframes，
+    时长由档位决定），主线程忙于流式渲染时仍平滑；Ultra 爆发仍用 canvas。
 
 ## 7. Review 重点
 
@@ -129,7 +137,8 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - 只支持 DSH `>=0.2.0-rc.1 <0.3.0-0`；依赖的 slot/service 名称若在 0.3 变化，需要更新 patch 与 `package.json` 的 `dsh.client.inject`。
 - `conversation.input.model.label` 子 slot 被覆盖：DeepSeek 官方模型名标签（如 `*-1017` 徽标）在这个插件下不显示。若需要，后续可复刻其标签渲染。
 - `Fast` 是提示词层速度模式，不改变真实解码速度；文案已明确。
-- 回合内改档：0.2.9 起会排队到回合结束才提交，所以「思考中拖档」对当前回合不生效、对下一回合生效（这是有意的）。
+- 回合内改档：0.2.10 起排队会保存完整模型选择并保留预览；仍要等回合结束才提交，所以「思考中拖档/切模型」对当前回合不生效、对下一回合生效（这是有意的）。
+- 粒子漂移用 CSS transform 动画，速度由动画时长换算（2.75s ÷ 速度系数）；`prefers-reduced-motion` 未单独处理，极端省电模式可能停帧。
 - Herta 等第三方皮肤的 CSS 若用 `!important` 重写按钮，可能影响 trigger 观感；滑块本体（div）不受影响。
 - Windows 实测通过；macOS/Linux 未验证（CSS/指针事件理论上通用）。
 
@@ -138,5 +147,5 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - [ ] 保留 `LICENSE`、`NOTICE.md`、`LICENSES/` 两个上游 MIT 全文
 - [ ] 不要把 `~/.dsh/effort-slider.json`、个人路径、profile 备份提交进仓库
 - [ ] 不要提交 `node_modules/`、`.work/`、`dist/`、截图临时文件
-- [ ] 版本号/CHANGELOG 更新（当前 0.2.9）
+- [ ] 版本号/CHANGELOG 更新（当前 0.2.10）
 - [ ] 发布宣传时在简介写清「Fork / 基于 …」并 @ 上游作者（B站同类插件普遍这么做）
