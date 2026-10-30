@@ -30,7 +30,7 @@ test('fast mode drifts the spark dots on the compositor, high faster than low', 
   assert.match(source, /@keyframes dsh-codex-reasoning-effort-slider-sparkdrift\{from\{transform:translate3d\(0,0,0\)\}to\{transform:translate3d\(-50%,0,0\)\}\}/)
   assert.match(source, /const effortSpeed = current\.effort === 'low' \? 0\.18 : current\.effort === 'high' \? 0\.45 : 0\.3/)
   assert.match(source, /const speed = current\.ultra \? \(current\.fast \? 1 : 0\.65\) : current\.fast \? effortSpeed : 0\.65/)
-  assert.match(source, /current\.ultra\s*\n?\s*\? \(current\.fast \? 82 : 58\.6\)/)
+  assert.match(source, /current\.ultra\s*\n?\s*\? \(current\.fast \? 95 : 68\)/)
   assert.match(source, /const seconds = m\.speed > 0\.5 \? fillWidth \/ m\.speed : 2\.75/)
   assert.match(source, /const blend = Math\.min\(1, Math\.max\(0, \(time - m\.changedAt\) \/ 600\)\)/)
   assert.match(source, /seconds\.toFixed\(2\) \+ 's'/)

@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 0.2.16
+
+- Ultra 与 Ultra+Fast 再略快一点：Ultra 58.6→68 px/s（约 3.65s/圈），Ultra+Fast 82→95 px/s（约 2.6s/圈，仍为 1.4 倍），600ms 缓动过渡不变。
+- Low/High+Fast 不变（120×系数）。
 ## 0.2.15
 
 - Ultra+Fast 改为从 Ultra 平滑加速：Ultra 单独 58.6 px/s，Ultra+Fast 只快 1.4 倍（≈82 px/s），

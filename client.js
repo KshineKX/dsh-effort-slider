@@ -469,11 +469,11 @@ window.__ModuleLoader__.load({
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          // 统一用 px/s：Ultra 单独 58.6，Ultra+Fast 只快 1.4 倍（≈82）并平滑过渡；
-          // Low/High+Fast 按填充宽度换算（120×系数）。不再给 Ultra+Fast 单独的 240px/s。
+          // 统一用 px/s：Ultra 单独 68，Ultra+Fast 保持 1.4 倍（≈95）并平滑过渡；
+          // Low/High+Fast 按填充宽度换算（120×系数）。
           const fillWidth = 26 + (width - 26) * (current.position || 0);
           const targetPx = current.ultra
-            ? (current.fast ? 82 : 58.6)
+            ? (current.fast ? 95 : 68)
             : current.fast ? 120 * effortSpeed : 0;
           if (m.changedAt === 0) { m.speed = targetPx; m.target = targetPx; }
           if (targetPx !== m.target) { m.from = m.speed; m.target = targetPx; m.changedAt = time; }
