@@ -1,6 +1,6 @@
 {
   "name": "dsh-effort-slider",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "description": "Codex 质感的思考强度滑杆（DSH composer）：最右档 Ultra = 火力全开，向系统提示词注入「预算无上限」。",
   "type": "module",
@@ -59,6 +59,6 @@
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "test": "node --test \"test/*.test.mjs\"",
-    "check": "node --check index.js && node --check client.js && node --check tools/inspect-session.mjs && node test/host.test.mjs && node test/client-load.test.mjs && node test/client-static.test.mjs"
+    "check": "node --check index.js && node --check client.js && node --check tools/inspect-session.mjs && node --test \"test/*.test.mjs\""
   }
 }

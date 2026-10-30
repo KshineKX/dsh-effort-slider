@@ -196,7 +196,7 @@ window.__ModuleLoader__.load({
       const running = Boolean(locked || state.pending);
       const disabled = Boolean(locked || !available || running);
       const motion = useRef({ speed: 0, from: 0, target: 0, changedAt: 0, travel: 0, burst: 0 });
-      latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction };
+      latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction, sessionId };
 
       // 「最右档 = 火力全开」：effort 为 max 时让 Host 注入预算无上限，离开 max 立刻解除。
       // 快速模式是独立开关：Host 端另有一段「速度优先」提示，可与任意档位组合。
@@ -237,6 +237,7 @@ window.__ModuleLoader__.load({
       useEffect(() => () => {
         stopDeferTimer();
         pendingRef.current = null;
+        fastWriteSeqRef.current += 1;
       }, [sessionId]);
       useLayoutEffect(() => {
         if (open) {
@@ -617,11 +618,11 @@ window.__ModuleLoader__.load({
                 setFast(nextFast);
                 if (targetSession) {
                   writeFastState(targetSession, nextFast).then(payload => {
-                    if (seq !== fastWriteSeqRef.current || sessionId !== targetSession) return;
+                    if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;
                     hostRef.current = { ...hostRef.current, fast: payload.fast === true };
                     setFast(payload.fast === true);
                   }).catch(() => {
-                    if (seq !== fastWriteSeqRef.current || sessionId !== targetSession) return;
+                    if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;
                     setFast(previousFast);
                     setError(t('failed'));
                   });
@@ -639,14 +640,15 @@ window.__ModuleLoader__.load({
               onClick: () => {
                 const previousFast = fast;
                 const targetSession = sessionId;
+                const seq = ++fastWriteSeqRef.current;
                 setFast(false);
                 if (targetSession) {
                   writeFastState(targetSession, false).then(payload => {
-                    if (sessionId !== targetSession) return;
+                    if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;
                     hostRef.current = { ...hostRef.current, fast: payload.fast === true };
                     setFast(payload.fast === true);
                   }).catch(() => {
-                    if (sessionId !== targetSession) return;
+                    if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;
                     setFast(previousFast);
                     setError(t('failed'));
                   });

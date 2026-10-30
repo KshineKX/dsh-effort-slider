@@ -107,7 +107,7 @@ test('ultra stop arms the throttle and the bolt toggles a real fast-mode prompt'
 test('reset to default also clears the host fast record and rolls back on failure', () => {
   assert.match(
     source,
-    /onClick: \(\) => \{\s*const previousFast = fast;\s*const targetSession = sessionId;\s*setFast\(false\);\s*if \(targetSession\) \{\s*writeFastState\(targetSession, false\)\.then\(/,
+    /onClick: \(\) => \{\s*const previousFast = fast;\s*const targetSession = sessionId;\s*const seq = \+\+fastWriteSeqRef\.current;\s*setFast\(false\);\s*if \(targetSession\) \{\s*writeFastState\(targetSession, false\)\.then\(/,
     'reset must POST fast:false, not only flip the local state',
   )
   assert.match(

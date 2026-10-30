@@ -6,8 +6,7 @@ DSH（DeepSeek Harness）composer 里的 **Codex 质感推理强度滑杆**。UI
 Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追加一段「预算无上限」，往左任何
 一档立刻解除。
 
-> 这不是给模型加额度。它只改变模型的行为倾向；真实计费仍按 token 用量计算，实测可能上涨
-> 30%~200%。详见下面的「风险」。
+> 这不是给模型加额度。它只改变模型的行为倾向；真实计费仍按 token 用量计算，消耗可能上涨，幅度取决于模型和任务；本项目未做统一增幅基准。详见下面的「风险」。
 >
 > Codex 原版有 `Fast` 装饰开关（原 README 注明无实际作用）。本插件把它**做成有实际作用**：
 > 打开后按会话注入一段「快速模式」提示词（速度优先、少发散、少重复验证），不改变模型速度、
@@ -15,6 +14,8 @@ Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追�
 > 会填满整条滑轨，不再在手柄后面留半格灰色。
 
 ![效果预览](docs/preview.png)
+
+当前版本：0.2.18。截图来自早期版本；当前动画速度与下文说明一致。Windows 开发者预发行；原生新 profile 安装、重启及性能基线尚未验收。
 
 ## 它是什么
 
@@ -60,8 +61,8 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
 **方式二：命令行**
 
 ```bat
-:: 从 GitHub（把 <org> 换成实际仓库）
-"%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:<org>/dsh-effort-slider
+:: 从 GitHub（私有仓库需使用有权限的 GitHub 身份）
+"%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:KshineKX/dsh-effort-slider
 
 :: 或从本地目录
 "%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add "link:<本仓库绝对路径>"
@@ -90,8 +91,7 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
 
 **新会话的默认档位不由插件决定**：它来自 DSH profile 的
 `agent-default-model.config.reasoningEffort`（`~/.dsh/profiles/<profile>/cordis.patch.yml`）。
-本机已设为 `low`；若想改回更高档，改这一行并重启 DSH。插件里的「重置为默认」仍然回到当前
-模型适配器公布的 `defaultEffort`。
+修改自己的 profile 后重启 DSH。插件里的「重置为默认」回到模型适配器公布的 `defaultEffort`。
 
 ## 相对上游的改动
 
@@ -112,9 +112,7 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
 6. **档位配色**：Low 绿色、High 蓝色、Ultra 紫色；填充、标题和触发器档位文字都由轨道的
    `data-effort` 驱动，和主题无关。
 7. **Fast 粒子流动**：开启小闪电后，填充区的白点向左漂移，且**档位越高越快**：
-   Low `0.18×`、High `0.45×`（约为 Low 的 2.5 倍，肉眼可见的差异）、Ultra 单独 `0.65×`、
-   Ultra+Fast `1.0×`。0.2.10 起白点位图只画一次，漂移由 CSS `transform` 在合成层完成，
-   任务跑起来、主线程流式渲染时也不会掉帧。
+   Low+Fast 约 `21.6 px/s`，High+Fast 约 `54 px/s`，Ultra `68 px/s`，Ultra+Fast `118 px/s`；Ultra+Fast 带 1.2 秒加速段。白点位图绘制后由 CSS transform 驱动漂移，旨在减少持续重绘；尚未测量帧率或保证流式输出时不卡顿。
 8. **Fast 变有用**：注入「快速模式」提示词（见下），不再只是视觉动画。
 9. **Host 联动**：模块 id、`/effort-slider/state` 两路状态同步、Ultra 档标题提示。
 10. **重置真的会关掉快速模式**：上游的 Fast 只是装饰，reset 只翻转本地状态；本仓库的 Fast 是真实
@@ -176,7 +174,7 @@ Invoke-RestMethod "http://127.0.0.1:<GUI端口>/effort-slider/state?sessionId=$e
 
 ## 风险（请先读）
 
-- **花钱**：提示词鼓励模型多用工具、多开子代理、多轮验证，token 消耗可能显著上涨（社区实测 30%~200%）。
+- **花钱**：提示词鼓励模型多用工具、多开子代理、多轮验证，token 消耗可能显著上涨（随模型和任务变化，未做本项目的定量基准）。
 - **跑飞**：有模型在「放开用」后删文件、乱开子代理、长时间跑偏的案例。建议在 harness 侧设硬上限。
 - **不是官方功能**：这是社区从 DSH 仓库 `docs/testing.zh.md`（「我们是 DeepSeek，不要吝惜真实 API 测试」）二次创作的技巧，官方没有承诺任何效果。
 - **别在长会话常开**：每个请求都会注入。
@@ -189,7 +187,7 @@ Invoke-RestMethod "http://127.0.0.1:<GUI端口>/effort-slider/state?sessionId=$e
 "%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop remove dsh-effort-slider
 ```
 
-再从 `dsh.profile.bundles` 移除，重启。状态文件 `~/.dsh/effort-slider.json` 可删。
+再从 `dsh.profile.bundles` 移除，重启。状态文件 `~/.dsh/effort-slider.json` 可保留；删除会清除插件记录。升级前备份原插件目录和该文件；回退时退出 DSH、恢复旧目录并重启，默认保留当前状态。0.2.18 沿用0.2.17状态格式。
 
 ## 开发
 
@@ -199,6 +197,7 @@ node tools/inspect-session.mjs       :: 检查会话日志里的 system prompt �
 node test/host.test.mjs              :: Host 半（状态/gate/路由）
 node test/client-static.test.mjs     :: 合并后的 bundle 不变量
 node test/client-load.test.mjs       :: VM 里跑 load + apply
+node --test "test/*.test.mjs"        :: 全部测试，包括组件行为与异步回复回归
 ```
 
 vendor 源码在 `vendor/codex-reasoning-effort-slider-client.js`（MIT，见 `LICENSES/`），不再依赖仓库外的任何副本。

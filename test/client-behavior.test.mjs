@@ -15,3 +15,13 @@ test('queued preview matches the requested stop before the turn ends',async()=>{
 test('the newest queued stop wins',async()=>{const {h,setRunning}=fixture();setRunning(true);await h.key('ArrowLeft');await h.key('ArrowLeft');setRunning(false);await h.tick();assert.equal(h.selections.length,1);assert.equal(h.selections[0].reasoningEffort,'low')});
 test('unmount clears the deferral timer',async()=>{const {h,setRunning}=fixture();setRunning(true);await h.key('Home');assert.ok(h.timers>0);h.unmount();assert.equal(h.timers,0)});
 test('a mid-turn model switch must retain the target model when queued',async()=>{const {h,setRunning}=fixture();h.snapshot.groups[0].models.push({id:'model-b',name:'Other',reasoning:{defaultEffort:'low',efforts:['off','low','high','max'].map(id=>({id}))}});await h.settle();setRunning(true);await h.click('model-link');await h.clickModel('model-b');assert.equal(h.selections.length,0);setRunning(false);await h.tick();assert.equal(h.selections.length,1);assert.equal(h.selections[0].model,'model-b');assert.equal(h.selections[0].provider,'provider-a');assert.equal(h.selections[0].reasoningEffort,'low')});
+
+test('a reset reply must not overwrite a newer Fast toggle',async()=>{
+ const {h}=fixture({effort:"high"});await h.click('fast');h.pauseFastWrites();await h.click('reset');await h.click('fast');
+ assert.equal(h.fastPressed(),true);await h.releaseFastWrite();assert.equal(h.fastPressed(),true);
+ await h.releaseFastWrite();assert.equal(h.server.fast,true);assert.equal(h.fastPressed(),true);
+});
+test('a Fast response from an earlier session must not change the current session UI',async()=>{
+ const {h}=fixture({effort:"high"});h.pauseFastWrites();await h.click('fast');await h.rerender({sessionId:'session-b'});
+ assert.equal(h.fastPressed(),false);await h.releaseFastWrite();assert.equal(h.fastPressed(),false);
+});

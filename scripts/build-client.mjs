@@ -884,5 +884,10 @@ patch(
       }, [efforts.length, pane, present]);`,
 )
 
+patch("live session identity", "latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction };", "latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction, sessionId };")
+patch("reset shares Fast sequence", "const targetSession = sessionId;\n                setFast(false);", "const targetSession = sessionId;\n                const seq = ++fastWriteSeqRef.current;\n                setFast(false);")
+{ const before = "if (sessionId !== targetSession) return;"; if (source.split(before).length - 1 !== 2) throw new Error("reset reply identity anchor count"); source = source.split(before).join("if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;"); }
+{ const before = "if (seq !== fastWriteSeqRef.current || sessionId !== targetSession) return;"; if (source.split(before).length - 1 !== 2) throw new Error("toggle reply identity anchor count"); source = source.split(before).join("if (!mountedRef.current || seq !== fastWriteSeqRef.current || latest.current.sessionId !== targetSession) return;"); }
+patch("invalidate Fast responses on session cleanup", "        stopDeferTimer();\n        pendingRef.current = null;", "        stopDeferTimer();\n        pendingRef.current = null;\n        fastWriteSeqRef.current += 1;")
 fs.writeFileSync(target, source, 'utf8')
 console.log('built ' + target + ' (' + String(Buffer.byteLength(source)) + ' bytes)')
