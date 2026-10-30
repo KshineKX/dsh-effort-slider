@@ -848,10 +848,12 @@ patch(
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          // Ultra 保持 0.2.10 的时长（2.75s ÷ 系数）；Low/High+Fast 按填充宽度换算恒定 px/s（120×系数），
-          // 既不因窄填充显得停住，也不会像 320 系数那样过快。
+          // Ultra 单独保持 2.75s÷系数；Ultra+Fast 对齐 Codex 原版约 145–230px/s 并再快一点（240px/s）；
+          // Low/High+Fast 按填充宽度换算恒定 px/s（120×系数）。
           const fillWidth = 26 + (width - 26) * (current.position || 0);
-          const seconds = current.ultra ? 2.75 / Math.max(speed, 0.05) : fillWidth / (120 * Math.max(speed, 0.05));
+          const seconds = current.ultra
+            ? (current.fast ? fillWidth / 240 : 2.75 / Math.max(speed, 0.05))
+            : fillWidth / (120 * Math.max(speed, 0.05));
           if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', seconds.toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
           if (current.open && m.burst && time - m.burst < 520) {
