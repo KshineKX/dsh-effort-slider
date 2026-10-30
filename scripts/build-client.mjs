@@ -848,9 +848,11 @@ patch(
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          // 时长按填充宽度换算，保证 px/s 恒定：Low 的填充很窄，固定时长会显得几乎不动。
+          // Ultra 保持 0.2.10 的时长（2.75s ÷ 系数）；Low/High+Fast 按填充宽度换算恒定 px/s（120×系数），
+          // 既不因窄填充显得停住，也不会像 320 系数那样过快。
           const fillWidth = 26 + (width - 26) * (current.position || 0);
-          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (fillWidth / (320 * Math.max(speed, 0.05))).toFixed(2) + 's');
+          const seconds = current.ultra ? 2.75 / Math.max(speed, 0.05) : fillWidth / (120 * Math.max(speed, 0.05));
+          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', seconds.toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
           if (current.open && m.burst && time - m.burst < 520) {
             const age = (time - m.burst) / 1000;
