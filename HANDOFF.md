@@ -1,4 +1,4 @@
-# HANDOFF · dsh-effort-slider 0.2.3
+# HANDOFF · dsh-effort-slider 0.2.9
 
 给 Codex / 审阅者的交接说明。先读这份，再按「验证」跑一遍，最后按「Review 重点」看代码。
 
@@ -47,14 +47,21 @@ dsh.plugin.json             插件描述（client.main）
 
 ```bat
 node scripts/build-client.mjs
-:: expected: built .../client.js (47484 bytes)
+:: expected: built .../client.js (50370 bytes)
 
 node test/host.test.mjs          :: 8 pass
-node test/client-static.test.mjs :: 9 pass
+node test/client-static.test.mjs :: 11 pass
 node test/client-load.test.mjs   :: 1 pass
+
+:: 验证注入真的进了 system prompt（读会话日志的 system/message 事件）
+node tools/inspect-session.mjs
 ```
 
-构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（发布复测 `fc7509bcfbcd0ea9078cd0233596c64c0a18793e02d8fee48f2e88e7b390801c`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
+构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `9312e4954ffc175648c9d898d330dd9b66277909f49a93fb89fb8f8622f0c3b0`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
+
+> 注意：注入发生在 system prompt，不在模型 CoT。`tools/inspect-session.mjs` 读的是 DSH 会话日志
+> `~/.dsh/sessions/<cwd>/<session>/session.v4.jsonl.zstd` 里的 `system/message` 事件（source 为
+> `system-prompt`），能列出哪些请求带了 Ultra/Fast 段；CoT 里看不到注入句属于正常现象。
 
 安装（桌面版）：
 
@@ -75,6 +82,12 @@ Plugins → Add plugin → 本仓库地址 / 本地目录 → 重启 DSH
   → 命中则注入对应 systemPrompt.section（order 10250 / 10240）
 ```
 
+验证方式：应在 **system prompt** 的组装日志中核对注入；CoT中是否出现相关字样不作为注入与否的判据。
+DSH 会话日志的 `system/message` 事件（`source.kind="system-prompt"`）保存了每个请求实际渲染的
+system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` 并按 seq/时间列出
+带注入的请求。也可以用 loopback 接口
+`GET /effort-slider/state?sessionId=<id>` 看 `enabled` / `fast` / `topEffortId` 实时状态。
+
 - 注入不是「真的给额度」，只是提示词；计费照旧按 token。
 - Host 端 gate 是**双重保险**：即使客户端状态没清，effort 不在最右档也不会注入。
 - 客户端有「回合进行中不提交档位」的保护（避免 thinking 历史与请求档位错配），松手时排队、回合结束补交。
@@ -93,7 +106,9 @@ Plugins → Add plugin → 本仓库地址 / 本地目录 → 重启 DSH
 8. Fast：tooltip 文案从「1.5倍速/无实际作用」改为「快速模式」；点击时 POST `fast` 到 Host。
 9. 工具提示（Fast / 重置为默认）：背景从 `--dsw-alias-bg-layer-2`（大黑塔皮肤下是 transparent）换成不透明菜单面 + 细边框 + 阴影，文字不再浮在页面内容上。
 10. Host 状态同步：mount 读取 `/effort-slider/state`，按 live `savedEffort` 对账 arm/disarm；Ultra 档 model-link 加 tooltip。
-11. 模型名扩展（上游已有）保留：`conversation.input.model.label` 子 slot 的动态注入被我们的 shadow 覆盖，DeepSeek 品牌名等标签扩展不再生效（已知取舍）。
+11. 档位配色：Low 绿、High 蓝、Ultra 紫，由 rail/popup/trigger 的 `data-effort` 驱动填充、标题与触发器档位文字。
+12. Fast 粒子流动：开启小闪电后白点向左漂移，Low `0.18×`、High `0.45×`（约 Low 的 2.5 倍）、Ultra 单独 `0.65×`、Ultra+Fast `1.0×`。
+13. 模型名扩展（上游已有）保留：`conversation.input.model.label` 子 slot 的动态注入被我们的 shadow 覆盖，DeepSeek 品牌名等标签扩展不再生效（已知取舍）。
 
 ## 7. Review 重点
 
@@ -116,9 +131,9 @@ Plugins → Add plugin → 本仓库地址 / 本地目录 → 重启 DSH
 - [ ] 保留 `LICENSE`、`NOTICE.md`、`LICENSES/` 两个上游 MIT 全文
 - [ ] 不要把 `~/.dsh/effort-slider.json`、个人路径、profile 备份提交进仓库
 - [ ] 不要提交 `node_modules/`、`.work/`、`dist/`、截图临时文件
-- [ ] 版本号/CHANGELOG 更新（当前 0.2.3）
+- [ ] 版本号/CHANGELOG 更新（当前 0.2.9）
 - [ ] 发布宣传时在简介写清「Fork / 基于 …」并 @ 上游作者（B站同类插件普遍这么做）
 
-## 发布窗口补充（2026-10-30）
+## 发布审阅补充
 
-22项输入文件与交付ZIP逐项一致；47484字节bundle双构建一致，18/18测试在正常Windows权限通过。沙箱临时文件rename的EPERM未计为通过；已在正常隔离临时目录复测。已校正文档旧字节数/哈希/测试数及无证据的消耗增幅。业务代码、构建patch、vendor与测试未改。当前max为客户端Ultra同步触发值，其他提供方最右档未验证；loopback不等于鉴权，Fast同步失败可能暂时显示不一致。仅私有源码与草稿包，不宣称原生全功能验收、免费额度或速度保证。
+输入版本为0.2.8，其20项测试及48590字节原产物已独立复现。0.2.9修正重置Fast残留、排队补交与身份边界、特殊对象键和日志解码误报，新增回归后完整38项通过；运行`node --test test/*.test.mjs`覆盖全部测试。诊断需Node22.15+/24+ zstd能力，日志仅证明组装观察。具体7点判断见docs/REVIEW-0.2.9.md，原始私人总结与实际会话样例不进入仓库。

@@ -36,6 +36,6 @@
 - DeepSeek Harness 的插件 API、slot 体系、`systemPrompt` 与 `webServer` 服务均为其公开接口。
 - 注入文本灵感来自 DSH 仓库 `docs/testing.zh.md` 的公开测试策略一节。
 
-## 0.2.3发布说明
+## 0.2.9派生修正
 
-另含Fast/重置工具提示的不透明菜单面、边框和阴影patch。MIT全文及原作者版权行原样保留；当前采用的vendor字节身份记录在包内package-manifest.json中，不把上游当前main冒充原始采用提交。代码许可不构成OpenAI/DeepSeek名称、商标或官方合作授权。效果图为提供的局部插件界面，未含账号、聊天或个人媒体。
+上游vendor字节与MIT全文保持。scripts/review-patches.mjs在原构建之后以anchor断言修正状态同步/排队；lib/state.js补特殊键安全读写，lib/session-log.js与日志检查工具补解码边界，相关测试为本项目新增。代码许可不授予OpenAI/DeepSeek商标或官方合作身份。精确采用文件的内容身份由分发清单记录，不伪造未记录的原始上游提交。

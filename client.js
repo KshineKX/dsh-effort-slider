@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
       .dsh-codex-reasoning-effort-slider-rail.dragging{cursor:grabbing}.dsh-codex-reasoning-effort-slider-rail.dragging .dsh-codex-reasoning-effort-slider-fill,.dsh-codex-reasoning-effort-slider-rail.dragging .dsh-codex-reasoning-effort-slider-knob,.dsh-codex-reasoning-effort-slider-rail.dragging .dsh-codex-reasoning-effort-slider-dot{transition:none}
       /* 填充色块只保留左端圆角，右端直角：一直伸到手柄正下方，不与手柄拼出两个圆角接缝 */
       .dsh-codex-reasoning-effort-slider-fill,.dsh-codex-reasoning-effort-slider-sparks{position:absolute;inset:0 auto 0 0;width:calc((100% - 26px)*var(--dsh-codex-reasoning-effort-slider-pos,0) + 26px);border-radius:16px;overflow:hidden;pointer-events:none;transition:width .18s cubic-bezier(.2,.8,.2,1)}
-      .dsh-codex-reasoning-effort-slider-fill{background:#3988f6;overflow:hidden}.dsh-codex-reasoning-effort-slider-rail[data-effort="max"] .dsh-codex-reasoning-effort-slider-fill,.dsh-codex-reasoning-effort-slider-rail[data-effort="max"] .dsh-codex-reasoning-effort-slider-sparks{border-radius:16px}
+      .dsh-codex-reasoning-effort-slider-fill{background:#3988f6;overflow:hidden}.dsh-codex-reasoning-effort-slider-rail[data-effort="max"] .dsh-codex-reasoning-effort-slider-fill,.dsh-codex-reasoning-effort-slider-rail[data-effort="max"] .dsh-codex-reasoning-effort-slider-sparks{border-radius:16px}.dsh-codex-reasoning-effort-slider-rail[data-effort="low"] .dsh-codex-reasoning-effort-slider-fill{background:linear-gradient(90deg,#34d399 0%,#22c55e 100%)}.dsh-codex-reasoning-effort-slider-rail[data-effort="high"] .dsh-codex-reasoning-effort-slider-fill{background:linear-gradient(90deg,#60a5fa 0%,#3988f6 100%)}.dsh-codex-reasoning-effort-slider-popup[data-effort="low"] .dsh-codex-reasoning-effort-slider-heading{color:#22c55e}.dsh-codex-reasoning-effort-slider-popup[data-effort="high"] .dsh-codex-reasoning-effort-slider-heading{color:#3989e9}.dsh-codex-reasoning-effort-slider-trigger[data-effort="low"] .dsh-codex-reasoning-effort-slider-trigger-effort{color:#22c55e}.dsh-codex-reasoning-effort-slider-trigger[data-effort="high"] .dsh-codex-reasoning-effort-slider-trigger-effort{color:#3989e9}
       /* 手柄宽度 30，15px 刚好压到第一格；Off 档再压掉这半格，左端不留蓝色残影 */
       .dsh-codex-reasoning-effort-slider-rail[data-effort="off"] .dsh-codex-reasoning-effort-slider-fill{width:0;opacity:0}
       /* 运行中（runActive）思考档位被钉在本次回合的请求上，此时立刻提交会让已保存的历史与请求档位错配 */
@@ -170,6 +170,8 @@ window.__ModuleLoader__.load({
       const busyRef = useRef(false);
       const lockedRef = useRef(false);
       const pendingRef = useRef(null);
+      const selectionRef = useRef(null);
+      const fastWriteRef = useRef({ generation: 0, tail: Promise.resolve() });
       const timersRef = useRef([]);
       const latest = useRef({});
       const hostRef = useRef(undefined);
@@ -180,6 +182,12 @@ window.__ModuleLoader__.load({
       const efforts = (model?.reasoning?.efforts || []).filter(e => order.includes(e.id))
         .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
       const savedEffort = selection?.reasoningEffort || model?.reasoning?.defaultEffort;
+      const currentIdentity = { sessionId, provider: selection?.provider, model: selection?.model, effort: savedEffort };
+      const previousIdentity = selectionRef.current;
+      if (previousIdentity && ['sessionId', 'provider', 'model', 'effort'].some(key => previousIdentity[key] !== currentIdentity[key])) pendingRef.current = null;
+      if (previousIdentity && previousIdentity.sessionId !== sessionId) { hostRef.current = undefined; fastWriteRef.current.generation++; }
+      selectionRef.current = currentIdentity;
+      function sameIdentity(identity) { const current = selectionRef.current; return identity && current && ['sessionId', 'provider', 'model', 'effort'].every(key => identity[key] === current[key]); }
       const displayed = preview || savedEffort;
       const index = Math.max(0, efforts.findIndex(e => e.id === displayed));
       const fraction = efforts.length > 1 ? index / (efforts.length - 1) : 0;
@@ -191,11 +199,26 @@ window.__ModuleLoader__.load({
       const running = Boolean(locked || state.pending);
       const disabled = Boolean(locked || !available || running);
       const motion = useRef({ speed: 0, from: 0, target: 0, changedAt: 0, travel: 0, burst: 0 });
-      latest.current = { open: present, fast, ultra, pane, disabled };
+      latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed };
 
       // 「最右档 = 火力全开」：effort 为 max 时让 Host 注入预算无上限，离开 max 立刻解除。
       // 快速模式是独立开关：Host 端另有一段「速度优先」提示，可与任意档位组合。
       // 两者都按 live selection / Host 记录对账，所以从 /model 命令弹窗改档也能保持一致。
+      function setFastIntent(nextFast) {
+        if (!sessionId) { setError(t('unavailable')); return; }
+        const id = sessionId, queue = fastWriteRef.current, generation = ++queue.generation;
+        setFast(nextFast); setError('');
+        const request = queue.tail.catch(() => {}).then(() => writeFastState(id, nextFast));
+        queue.tail = request;
+        request.then(payload => {
+          if (!mountedRef.current || selectionRef.current?.sessionId !== id || queue.generation !== generation) return;
+          hostRef.current = { ...hostRef.current, fast: payload.fast === true };
+          setFast(payload.fast === true);
+        }).catch(() => {
+          if (!mountedRef.current || selectionRef.current?.sessionId !== id || queue.generation !== generation) return;
+          setFast(hostRef.current?.fast === true); setError(t('failed'));
+        });
+      }
       function syncThrottle(effortId) {
         if (!sessionId) return;
         const want = effortId === THROTTLE_EFFORT;
@@ -210,32 +233,33 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (!sessionId) return undefined;
         let alive = true;
+        const readGeneration = fastWriteRef.current.generation;
+        setFast(false);
         readHostState(sessionId).then(payload => {
           if (!alive || !payload) return;
-          hostRef.current = { enabled: payload.enabled === true, topEffortId: payload.topEffortId || undefined, fast: payload.fast === true };
-          setFast(payload.fast === true);
-          syncThrottleRef.current(savedEffort);
+          const fresh = readGeneration === fastWriteRef.current.generation;
+          hostRef.current = { enabled: payload.enabled === true, topEffortId: payload.topEffortId || undefined, fast: fresh ? payload.fast === true : hostRef.current?.fast === true };
+          if (fresh) setFast(payload.fast === true);
+          syncThrottleRef.current(selectionRef.current?.effort);
         }).catch(() => {});
         return () => { alive = false; };
       }, [sessionId]);
       useEffect(() => { syncThrottleRef.current(savedEffort); }, [savedEffort]);
 
-      // 运行中被挂起的档位：等回合结束、滑块重新可用时再补提交，而不是直接丢掉用户的意图。
+      // Keep a lightweight timer ready; a ref-only queued intent does not change disabled.
       useEffect(() => {
-        if (disabled || !pendingRef.current) return;
+        if (disabled) return;
         let cancelled = false;
         const timer = setInterval(async () => {
-          if (cancelled || busyRef.current) return;
-          const busy = await sessionBusy();
-          if (cancelled || busy || !pendingRef.current) return;
-          const next = pendingRef.current;
-          pendingRef.current = null;
-          clearInterval(timer);
-          lockedRef.current = true;
-          chooseEffort(next);
+          if (cancelled || busyRef.current || !pendingRef.current) return;
+          const active = await sessionBusy();
+          if (cancelled || active || busyRef.current || !pendingRef.current) return;
+          const intent = pendingRef.current;
+          if (!sameIdentity(intent.origin)) { pendingRef.current = null; return; }
+          void commit(intent.next);
         }, 1200);
         return () => { cancelled = true; clearInterval(timer); };
-      }, [disabled]);
+      }, [disabled, sessionId, selection?.provider, selection?.model, savedEffort]);
 
       useEffect(() => {
         if (available) load();
@@ -277,43 +301,36 @@ window.__ModuleLoader__.load({
       // 向 sessions 服务实时询问该会话是否有进行中的回合。
       // ctx 只存在于 apply(ctx) 作用域，组件内拿不到，因此由模块级 sessionsRef 注入。
       async function sessionBusy() {
-        const probe = sessionsRef.current;
-        const key = sessionId;
-        if (!probe || key === undefined) return false;
+        const probe = sessionsRef.current, key = sessionId;
+        if (!probe || key === undefined) return true;
         try {
-          if (typeof probe.turnOf === 'function') return Boolean(probe.turnOf(key));
-          if (typeof probe.state === 'function') return Boolean(probe.state(key)?.turn);
-          if (typeof probe.get === 'function') return Boolean(probe.get(key)?.turn);
-          if (typeof probe.isRunning === 'function') return Boolean(probe.isRunning(key));
-          if (typeof probe.running === 'function') return Boolean(probe.running(key));
-        } catch { return false; }
-        return false;
+          if (typeof probe.turnOf === 'function') return Boolean(await probe.turnOf(key));
+          if (typeof probe.state === 'function') return Boolean((await probe.state(key))?.turn);
+          if (typeof probe.get === 'function') return Boolean((await probe.get(key))?.turn);
+          if (typeof probe.isRunning === 'function') return Boolean(await probe.isRunning(key));
+          if (typeof probe.running === 'function') return Boolean(await probe.running(key));
+        } catch { return true; }
+        return true;
       }
       async function commit(next) {
         if (disabled || busyRef.current || !next) return;
-        busyRef.current = true;
-        setBusy(true);
-        setError('');
+        const origin = selectionRef.current;
+        busyRef.current = true; setBusy(true); setError('');
         try {
-          // 二次确认：走到这里才发现回合已经开始，就把提交交还给挂起队列。
-          if (await sessionBusy()) {
-            pendingRef.current = next.reasoningEffort ?? null;
-            return;
-          }
+          const active = await sessionBusy();
+          if (!mountedRef.current || !sameIdentity(origin)) return;
+          if (active) { pendingRef.current = { origin, next: { ...next } }; return; }
           const result = await select(next);
           if (result && !result.ok) throw new Error(result.error?.message || t('failed'));
           if (result === undefined) throw new Error(t('unavailable'));
-          // 真正落盘成功，清掉挂起意图
-          if (pendingRef.current === next.reasoningEffort) pendingRef.current = null;
+          const queued = pendingRef.current;
+          if (queued && sameIdentity(queued.origin) && ['provider','model','reasoningEffort'].every(key => queued.next[key] === next[key])) pendingRef.current = null;
         } catch (cause) {
+          pendingRef.current = null;
           if (mountedRef.current) setError(cause.message || t('failed'));
         } finally {
           busyRef.current = false;
-          if (mountedRef.current) {
-            setBusy(false);
-            setPreview(null);
-            previewRef.current = null;
-          }
+          if (mountedRef.current) { setBusy(false); setPreview(null); previewRef.current = null; }
         }
       }
       function chooseEffort(id) {
@@ -327,7 +344,7 @@ window.__ModuleLoader__.load({
           setPreview(null);
           return;
         }
-        pendingRef.current = id;
+        pendingRef.current = { origin: selectionRef.current, next: { ...selection, reasoningEffort: id } };
         // commit() 内部会再向 sessions 确认一次；这里不提前拦截，避免 UI 状态滞后导致漏提交。
         void commit({ ...selection, reasoningEffort: id });
       }
@@ -399,20 +416,21 @@ window.__ModuleLoader__.load({
           last = time;
           const current = latest.current;
           const m = motion.current;
-          const target = current.ultra && current.fast ? 1 : 0;
+          const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
+          const target = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0;
           if (target !== m.target) {
             m.from = m.speed; m.target = target; m.changedAt = time;
           }
           const p = Math.min(1, Math.max(0, (time - m.changedAt) / (m.target ? 600 : 750)));
           m.speed = m.from + (m.target - m.from) * p * p * (3 - 2 * p);
-          if (current.ultra) m.travel += delta * m.speed;
+          if (current.ultra || current.fast) m.travel += delta * m.speed;
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           bctx.clearRect(0, 0, 144, 144);
           if (current.open) {
-            const t = time / 1000, speed = current.ultra ? m.speed : 0;
+            const t = time / 1000, speed = current.ultra || current.fast ? m.speed : 0;
             particleSeeds.forEach(([px, py], i) => {
               const phase = i * 2.39;
-              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : 0;
+              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : current.fast ? m.travel * (70 + i % 6 * 9) : 0;
               const x = ((px / 346 * width - offset + Math.sin(t * 9 + phase) * .7 * (1 - speed)) % width + width) % width;
               const y = (py + Math.cos(t * 10 + phase) * .55 * (1 - speed) + Math.sin(t * 1.3 + phase) * .8 * speed) * 26 / 36;
               const idle = .55 + .3 * (.5 + .5 * Math.sin(t * 1.1 + phase));
@@ -538,30 +556,21 @@ window.__ModuleLoader__.load({
         !state.groups.length ? h('div', { className: 'dsh-codex-reasoning-effort-slider-status' }, state.status === 'loading' ? t('loading') : t('empty')) : null);
       // 弹层必须 portal 到 body：聊天面板带 backdrop-filter 时会给 position:fixed 的后代
       // 重新创建包含块，弹层会按面板坐标漂移。
-      const popupNode = h('section', { className: classes, ref: popupRef, role: 'dialog', 'aria-label': pane === 'models' ? t('model') : t('effort'),
+      const popupNode = h('section', { className: classes, ref: popupRef, role: 'dialog', 'data-effort': displayed || '', 'aria-label': pane === 'models' ? t('model') : t('effort'),
         'aria-hidden': !open, inert: !open ? '' : undefined, style: { '--dsh-codex-reasoning-effort-slider-height': `${pane === 'models' ? menuHeight : 104}px` } },
           modelsView,
           h('div', { className: `dsh-codex-reasoning-effort-slider-pane dsh-codex-reasoning-effort-slider-main${pane !== 'effort' ? ' hidden' : ''}`, inert: pane !== 'effort' ? '' : undefined },
-            h('button', { className: `dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-fast${fast ? ' active' : ''}`, 'aria-label': t('fast'), 'aria-pressed': fast, onClick: () => {
-                const nextFast = !fast;
-                setFast(nextFast);
-                if (sessionId) {
-                  writeFastState(sessionId, nextFast).then(payload => {
-                    hostRef.current = { ...hostRef.current, fast: payload.fast === true };
-                    setFast(payload.fast === true);
-                  }).catch(() => {});
-                }
-              } },
+            h('button', { className: `dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-fast${fast ? ' active' : ''}`, 'aria-label': t('fast'), 'aria-pressed': fast, onClick: () => setFastIntent(!fast) },
               h('svg', { className: 'dsh-codex-reasoning-effort-slider-bolt', viewBox: '0 0 24 24', 'aria-hidden': true },
                 h('path', { d: 'M14.4 2Q16 .2 15.8 2.5L15.1 8.5H20.5Q22 8.5 21 9.8L10.7 21.7Q9 23.4 9.2 21.2L10 14.2H4.2Q2.6 14.2 3.6 12.9L14.4 2Z' })),
               h('span', { className: 'dsh-codex-reasoning-effort-slider-tooltip', role: 'tooltip' },
                 h('span', null, t('fast')), h('span', null, t('usage')), h('span', null, t('visual')))),
-            h('button', { className: 'dsh-codex-reasoning-effort-slider-model-link', onClick: () => setPane('models'), 'aria-label': t('model'), title: ultra ? modelName + ' · Ultra = 火力全开（已注入预算无上限）' : modelName },
+            h('button', { className: 'dsh-codex-reasoning-effort-slider-model-link', onClick: () => setPane('models'), 'aria-label': t('model'), title: ultra ? modelName + ' · Ultra：请求使用 max 且 Host 状态已开启时附加提示词' : modelName },
               h('span', { className: 'dsh-codex-reasoning-effort-slider-heading' }, currentLabel || t('choose'), icon('chevron', true)),
               h('span', { className: 'dsh-codex-reasoning-effort-slider-model' }, modelName)),
             h('div', { className: 'dsh-codex-reasoning-effort-slider-warning' }, h('span', null, t('warning'))),
             h('button', { className: 'dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-reset', disabled: busy || !model?.reasoning, 'aria-label': t('reset'),
-              onClick: () => { setFast(false); chooseEffort(model?.reasoning?.defaultEffort); }
+              onClick: () => { setFastIntent(false); chooseEffort(model?.reasoning?.defaultEffort); }
             }, icon('reset'), h('span', { className: 'dsh-codex-reasoning-effort-slider-tooltip', role: 'tooltip' }, t('reset'))),
             efforts.length ? h('div', { className: `dsh-codex-reasoning-effort-slider-rail${dragging ? ' dragging' : ''}`, ref: railRef,
               'data-effort': displayed || '', 'data-locked': locked ? '' : undefined,
@@ -585,7 +594,7 @@ window.__ModuleLoader__.load({
               onClick: () => { setError(''); load(); } }, icon('reset', true))) : null);
       return h('div', { className: 'dsh-codex-reasoning-effort-slider-root', ref: rootRef, 'data-dsh-codex-reasoning-effort-slider-session': true },
         h('style', null, styles),
-        h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, ref: triggerRef, disabled,
+        h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, 'data-effort': savedEffort || '', ref: triggerRef, disabled,
           'aria-label': `${modelName} ${triggerLabel}`, 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-busy': busy,
           onClick: () => {
             if (open) close();

@@ -14,6 +14,24 @@ test('client bundle keeps the ModuleLoader contract and the package id', () => {
   assert.match(source, /apply\(ctx\)/)
 })
 
+test('per-stop accent colours: Low green, High blue, Ultra purple, via data-effort', () => {
+  assert.match(source, /rail\[data-effort="low"\] \.dsh-codex-reasoning-effort-slider-fill\{background:linear-gradient\(90deg,#34d399 0%,#22c55e 100%\)\}/)
+  assert.match(source, /rail\[data-effort="high"\] \.dsh-codex-reasoning-effort-slider-fill\{background:linear-gradient\(90deg,#60a5fa 0%,#3988f6 100%\)\}/)
+  assert.match(source, /popup\[data-effort="low"\] .*heading\{color:#22c55e\}/)
+  assert.match(source, /popup\[data-effort="high"\] .*heading\{color:#3989e9\}/)
+  assert.match(source, /trigger\[data-effort="low"\] .*trigger-effort\{color:#22c55e\}/)
+  assert.match(source, /trigger\[data-effort="high"\] .*trigger-effort\{color:#3989e9\}/)
+  assert.ok(source.includes("'data-effort': displayed || ''"))
+  assert.ok(source.includes("'data-effort': savedEffort || ''"))
+})
+
+test('fast mode makes the spark dots drift left, slower than ultra, high a bit faster than low', () => {
+  assert.match(source, /const effortSpeed = current\.effort === 'low' \? 0\.18 : current\.effort === 'high' \? 0\.45 : 0\.3/)
+  assert.match(source, /effort: displayed/)
+  assert.match(source, /if \(current\.ultra \|\| current\.fast\) m\.travel \+= delta \* m\.speed/)
+  assert.match(source, /current\.fast \? m\.travel \* \(70 \+ i % 6 \* 9\)/)
+})
+
 test('client bundle replaces the composer model seat through the documented priority rule', () => {
   assert.match(source, /name: 'conversation\.input\.model'/)
   assert.match(source, /priority: -1/)
@@ -73,8 +91,8 @@ test('ultra stop arms the throttle and the bolt toggles a real fast-mode prompt'
   assert.match(source, /THROTTLE_EFFORT = 'max'/)
   assert.match(source, /writeHostState\(sessionId, want/)
   assert.match(source, /readHostState\(sessionId\)/)
-  assert.match(source, /syncThrottleRef\.current\(savedEffort\)/)
-  assert.match(source, /writeFastState\(sessionId, nextFast\)/)
+  assert.match(source, /syncThrottleRef\.current\(selectionRef\.current\?\.effort\)/)
+  assert.match(source, /writeFastState\(id, nextFast\)/)
   assert.match(source, /setFast\(payload\.fast === true\)/)
 })
 

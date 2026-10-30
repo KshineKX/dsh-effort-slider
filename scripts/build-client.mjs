@@ -18,6 +18,7 @@
  * Run: node scripts/build-client.mjs
  */
 import fs from 'node:fs'
+import { applyReviewPatches } from './review-patches.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -85,6 +86,33 @@ patch(
   'round the fill at every stop',
   'border-radius:16px 0 0 16px',
   'border-radius:16px',
+)
+
+// Per-stop accent colours: Low green, High blue, Ultra keeps the upstream
+// purple glow. The rail/popup/trigger all carry data-effort so one attribute
+// drives the fill, heading and trigger caption.
+patch(
+  'per-stop accent colours',
+  '.dsh-codex-reasoning-effort-slider-fill{background:#3988f6;overflow:hidden}',
+  '.dsh-codex-reasoning-effort-slider-fill{background:#3988f6;overflow:hidden}' +
+    '.dsh-codex-reasoning-effort-slider-rail[data-effort="low"] .dsh-codex-reasoning-effort-slider-fill{background:linear-gradient(90deg,#34d399 0%,#22c55e 100%)}' +
+    '.dsh-codex-reasoning-effort-slider-rail[data-effort="high"] .dsh-codex-reasoning-effort-slider-fill{background:linear-gradient(90deg,#60a5fa 0%,#3988f6 100%)}' +
+    '.dsh-codex-reasoning-effort-slider-popup[data-effort="low"] .dsh-codex-reasoning-effort-slider-heading{color:#22c55e}' +
+    '.dsh-codex-reasoning-effort-slider-popup[data-effort="high"] .dsh-codex-reasoning-effort-slider-heading{color:#3989e9}' +
+    '.dsh-codex-reasoning-effort-slider-trigger[data-effort="low"] .dsh-codex-reasoning-effort-slider-trigger-effort{color:#22c55e}' +
+    '.dsh-codex-reasoning-effort-slider-trigger[data-effort="high"] .dsh-codex-reasoning-effort-slider-trigger-effort{color:#3989e9}',
+)
+
+patch(
+  'popup carries the effort as a data attribute',
+  "const popupNode = h('section', { className: classes, ref: popupRef, role: 'dialog',",
+  "const popupNode = h('section', { className: classes, ref: popupRef, role: 'dialog', 'data-effort': displayed || '',",
+)
+
+patch(
+  'trigger carries the effort as a data attribute',
+  "h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, ref: triggerRef, disabled,",
+  "h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, 'data-effort': savedEffort || '', ref: triggerRef, disabled,",
 )
 
 // Same trap as the knob: the tooltip background was the theme token
@@ -308,5 +336,44 @@ patch(
   "style: { '--dsh-codex-reasoning-effort-slider-pos': dragPos === null ? fraction : dragPos }, role: 'slider', tabIndex: 0,",
 )
 
+// Fast mode should also make the spark dots drift leftwards, slower than the
+// Ultra flow. Upstream only moves the dots when Ultra+Fast are both on.
+patch(
+  'spark dots move in fast mode too (slower than ultra)',
+  'const target = current.ultra && current.fast ? 1 : 0;',
+  'const target = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? 0.3 : 0;',
+)
+
+// Within Fast mode the drift follows the selected effort: Low is gentle, High
+// clearly quicker (about 2.5x), so the difference is visible at a glance while
+// still staying slower than Ultra.
+patch(
+  'fast drift scales with the effort stop',
+  'const target = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? 0.3 : 0;',
+  'const effortSpeed = current.effort === \'low\' ? 0.18 : current.effort === \'high\' ? 0.45 : 0.3;\n          const target = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0;',
+)
+
+patch(
+  'latest state carries the effort id for the drift speed',
+  'latest.current = { open: present, fast, ultra, pane, disabled };',
+  'latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed };',
+)
+patch(
+  'spark travel accumulates for fast as well',
+  '          if (current.ultra) m.travel += delta * m.speed;',
+  '          if (current.ultra || current.fast) m.travel += delta * m.speed;',
+)
+patch(
+  'spark opacity follows the fast speed',
+  '            const t = time / 1000, speed = current.ultra ? m.speed : 0;',
+  '            const t = time / 1000, speed = current.ultra || current.fast ? m.speed : 0;',
+)
+patch(
+  'fast spark drift is slower than ultra',
+  '              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : 0;',
+  '              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : current.fast ? m.travel * (70 + i % 6 * 9) : 0;',
+)
+
+source = applyReviewPatches(source)
 fs.writeFileSync(target, source, 'utf8')
 console.log('built ' + target + ' (' + String(Buffer.byteLength(source)) + ' bytes)')
