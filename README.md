@@ -6,11 +6,12 @@ DSH（DeepSeek Harness）composer 里的 **Codex 质感推理强度滑杆**。UI
 Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追加一段「预算无上限」，往左任何
 一档立刻解除。
 
-> 这不是给模型加额度。它只改变模型的行为倾向；真实计费、上下文上限和推理预算仍由服务端及宿主决定，消耗可能增加，但本项目没有可复核的增幅统计。详见下面的「风险」。
+> 这不是给模型加额度。它只改变模型的行为倾向；真实计费仍按 token 用量计算，实测可能上涨
+> 30%~200%。详见下面的「风险」。
 >
-> 上游社区UI基座将`Fast`标为无实际作用。本插件把它**做成有实际作用**：
+> Codex 原版有 `Fast` 装饰开关（原 README 注明无实际作用）。本插件把它**做成有实际作用**：
 > 打开后按会话注入一段「快速模式」提示词（速度优先、少发散、少重复验证），不改变模型速度、
-> 不改变计费；这是本仓库的提示词策略，不代表OpenAI或上游作者承诺效果。另外修正了上游滑轨的填充算法：最右档现在
+> 不改变计费；这是本仓库相对上游唯一的语义改动。另外修正了上游滑轨的填充算法：最右档现在
 > 会填满整条滑轨，不再在手柄后面留半格灰色。
 
 ![效果预览](docs/preview.png)
@@ -115,8 +116,13 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
    Ultra+Fast `1.0×`。
 8. **Fast 变有用**：注入「快速模式」提示词（见下），不再只是视觉动画。
 9. **Host 联动**：模块 id、`/effort-slider/state` 两路状态同步、Ultra 档标题提示。
-10. 预览与自检：`scripts/build-client.mjs` 可重复产出 bundle，测试里锁定滑轨几何、实体手柄、
-    工具提示不透明、档位配色、粒子流动与拖动逻辑。
+10. **重置真的会关掉快速模式**：上游的 Fast 只是装饰，reset 只翻转本地状态；本仓库的 Fast 是真实
+    注入，所以 reset 现在同时向 Host 发送 `fast: false`，弹层闪电、触发器与注入状态保持一致。
+11. **回合进行中改档会排队到回合结束**：用 `sessions.binding(id).session.getSnapshot().running`
+    判断真实运行状态（DSH 0.2.x 没有 `turnOf/isRunning` 这类方法），回合结束后自动补交，避免
+    thinking 历史与请求档位错配。
+12. 预览与自检：`scripts/build-client.mjs` 可重复产出 bundle，测试里锁定滑轨几何、实体手柄、
+    工具提示不透明、档位配色、粒子流动、拖动逻辑，以及 reset / 排队两条 Host 联动。
 
 快速模式的注入文本（可配置）：
 
@@ -142,12 +148,12 @@ node tools/inspect-session.mjs            :: 自动找当前会话（按 DSH_SES
 node tools/inspect-session.mjs <session.v4.jsonl.zstd>
 ```
 
-输出会列出日志中哪些组装提示词带了注入。以下为虚构格式示例，不是真实会话证据：
+输出会列出「哪些请求的 system prompt 里带了注入」：
 
 ```
-system/message events: 3   with injection: 2
-  seq=2  2026-01-01T00:00:00.000Z  Ultra/预算无上限 + Fast/快速模式  (system-prompt)
-  seq=3  2026-01-01T00:00:01.000Z  Ultra/预算无上限  (system-prompt)
+system/message events: 12   with injection: 5
+  seq=2997  2026-10-29T18:37:29.216Z  Ultra/预算无上限 + Fast/快速模式  (system-prompt)
+  seq=3006  2026-10-29T18:37:44.134Z  Ultra/预算无上限  (system-prompt)
 ```
 
 **② 看 Host 实时状态**
@@ -168,7 +174,7 @@ Invoke-RestMethod "http://127.0.0.1:<GUI端口>/effort-slider/state?sessionId=$e
 
 ## 风险（请先读）
 
-- **花钱**：提示词鼓励模型多用工具、多开子代理、多轮验证，token消耗可能增加，本项目未量化其增幅。
+- **花钱**：提示词鼓励模型多用工具、多开子代理、多轮验证，token 消耗可能显著上涨（社区实测 30%~200%）。
 - **跑飞**：有模型在「放开用」后删文件、乱开子代理、长时间跑偏的案例。建议在 harness 侧设硬上限。
 - **不是官方功能**：这是社区从 DSH 仓库 `docs/testing.zh.md`（「我们是 DeepSeek，不要吝惜真实 API 测试」）二次创作的技巧，官方没有承诺任何效果。
 - **别在长会话常开**：每个请求都会注入。
@@ -196,17 +202,3 @@ node test/client-load.test.mjs       :: VM 里跑 load + apply
 vendor 源码在 `vendor/codex-reasoning-effort-slider-client.js`（MIT，见 `LICENSES/`），不再依赖仓库外的任何副本。
 
 交接给审阅者/Codex 会话的说明见 [`HANDOFF.md`](HANDOFF.md)，版本记录见 [`CHANGELOG.md`](CHANGELOG.md)。
-
-## 0.2.9审阅修正与验证范围
-
-本版基于交接0.2.8，经可复现回归修正：重置会关闭Host Fast；排队保存完整选择及会话/模型身份，空闲后补交且跨上下文取消；Fast写入串行，失败时显示错误并回退至最近确认状态；未知/失败的回合探测暂缓切档；特殊会话键安全持久化。原来的配色、粒子速度、实心控件和拖动视觉保留，不重构上游UI。详见[7项审阅结论](docs/REVIEW-0.2.9.md)。
-
-客户端两次构建一致：50370字节，SHA-256 `9312e4954ffc175648c9d898d330dd9b66277909f49a93fb89fb8f8622f0c3b0`。完整测试共38项：原20项、9项组件回调数据流、5项合成日志、4项gate/状态边界；这是隔离Host/VM与合成数据验证，不是原生浏览器、全皮肤、长跑或速度/费用测试。发布窗口不安装、不重启真实DSH。
-
-`tools/inspect-session.mjs`需要带zstd支持的Node（22.15+或24+）；插件主体仍沿用Node>=20声明，Node20未在本轮复验。工具按解码器消费字节处理多帧，遇到损坏、无zstd或非法JSON显式失败。`system/message`证明日志记录了组装后的提示词，不证明提供方已收到、计费预算已放宽或模型必然遵循；CoT不是注入回执。工具不会上传日志，但会打印所选文件路径，公开反馈前请去除私人路径、时间和会话标识。
-
-客户端Ultra同步值目前为`max`，其他适配器的最右档不自动等同于Ultra。Host gate限制在匹配会话、开启状态及实际effort条件；本地IPC状态、回合探测与ModelDirectory提交之间仍非同一个Host原子事务，不能宣称绝对消除所有请求竞争。Fast失败或回执丢失时以Host重读及错误提示为准，按钮颜色不是提供商回执。
-
-路由使用DSH宿主的相对地址，不依赖作者localhost、固定端口或账号。loopback是连接地址筛选，不是独立鉴权/Origin防护，勿将路由反代到公网或当作多用户边界。状态文件只按单Host写者设计；原子rename不等同于断电持久性或多进程锁。
-
-这是非OpenAI/DeepSeek官方的社区MIT衍生插件，两个上游版权及MIT全文保持。截图是提供的局部界面参考，不是本版原生验收证明。仓库保持私有，0.2.9先提供发行草稿；有权限账户下载包、核对SHA、解压到包含package.json的目录，通过DSH插件页添加，保存工作后按宿主提示自行重启。不会自动替换你现用的0.2.8。

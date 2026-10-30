@@ -12,13 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['22', '24']
+        node: ['20', '22', '24']
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-      - name: Reproduce committed bundle twice
+      - name: Reproduce the committed bundle twice
         shell: pwsh
         run: |
           $before=(Get-FileHash -Algorithm SHA256 -LiteralPath client.js).Hash
@@ -28,4 +28,9 @@ jobs:
           node scripts/build-client.mjs
           if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
           if((Get-FileHash -Algorithm SHA256 -LiteralPath client.js).Hash -ne $before){throw 'Second build differs'}
-      - run: node --test test/*.test.mjs
+      - name: Host half (sections, gate, state file, loopback route)
+        run: node test/host.test.mjs
+      - name: Bundle invariants (geometry, colours, fast mode, deferral)
+        run: node test/client-static.test.mjs
+      - name: ModuleLoader smoke test
+        run: node test/client-load.test.mjs

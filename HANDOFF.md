@@ -47,17 +47,17 @@ dsh.plugin.json             插件描述（client.main）
 
 ```bat
 node scripts/build-client.mjs
-:: expected: built .../client.js (50370 bytes)
+:: expected: built .../client.js (50299 bytes)
 
 node test/host.test.mjs          :: 8 pass
-node test/client-static.test.mjs :: 11 pass
+node test/client-static.test.mjs :: 14 pass
 node test/client-load.test.mjs   :: 1 pass
 
 :: 验证注入真的进了 system prompt（读会话日志的 system/message 事件）
 node tools/inspect-session.mjs
 ```
 
-构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `9312e4954ffc175648c9d898d330dd9b66277909f49a93fb89fb8f8622f0c3b0`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
+构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `F2B616C0…8EFAD7`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
 
 > 注意：注入发生在 system prompt，不在模型 CoT。`tools/inspect-session.mjs` 读的是 DSH 会话日志
 > `~/.dsh/sessions/<cwd>/<session>/session.v4.jsonl.zstd` 里的 `system/message` 事件（source 为
@@ -82,7 +82,7 @@ Plugins → Add plugin → 本仓库地址 / 本地目录 → 重启 DSH
   → 命中则注入对应 systemPrompt.section（order 10250 / 10240）
 ```
 
-验证方式：应在 **system prompt** 的组装日志中核对注入；CoT中是否出现相关字样不作为注入与否的判据。
+验证方式（重要）：注入只出现在 **system prompt**，不会出现在模型 CoT/思考文本里。
 DSH 会话日志的 `system/message` 事件（`source.kind="system-prompt"`）保存了每个请求实际渲染的
 system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` 并按 seq/时间列出
 带注入的请求。也可以用 loopback 接口
@@ -91,6 +91,8 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - 注入不是「真的给额度」，只是提示词；计费照旧按 token。
 - Host 端 gate 是**双重保险**：即使客户端状态没清，effort 不在最右档也不会注入。
 - 客户端有「回合进行中不提交档位」的保护（避免 thinking 历史与请求档位错配），松手时排队、回合结束补交。
+  0.2.9 起用 `ctx.sessions.binding(id).session.getSnapshot().running` 判断运行状态，并独立轮询补交；
+  0.2.8 及以前的 `turnOf/isRunning` 探测在 DSH 0.2.x 不存在，实际是立即提交。
 
 ## 6. 相对上游的改动（review 时重点）
 
@@ -109,6 +111,10 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 11. 档位配色：Low 绿、High 蓝、Ultra 紫，由 rail/popup/trigger 的 `data-effort` 驱动填充、标题与触发器档位文字。
 12. Fast 粒子流动：开启小闪电后白点向左漂移，Low `0.18×`、High `0.45×`（约 Low 的 2.5 倍）、Ultra 单独 `0.65×`、Ultra+Fast `1.0×`。
 13. 模型名扩展（上游已有）保留：`conversation.input.model.label` 子 slot 的动态注入被我们的 shadow 覆盖，DeepSeek 品牌名等标签扩展不再生效（已知取舍）。
+14. 重置（0.2.9）：reset 同时 `POST { fast: false }` 清 Host 的快速模式记录，不再「界面关了、注入还在」。
+15. 回合内改档（0.2.9）：busy 探测改读 `SessionBinding.session` 快照的 `running`；挂起的档位由 `deferTimerRef`
+    独立轮询，回合结束后补交（不再依赖 `disabled` 变化触发）。
+16. 回归测试锁定上述两条：reset 必清 Host Fast、busy 探测必读快照、挂起档位必须排队补交。
 
 ## 7. Review 重点
 
@@ -123,6 +129,7 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - 只支持 DSH `>=0.2.0-rc.1 <0.3.0-0`；依赖的 slot/service 名称若在 0.3 变化，需要更新 patch 与 `package.json` 的 `dsh.client.inject`。
 - `conversation.input.model.label` 子 slot 被覆盖：DeepSeek 官方模型名标签（如 `*-1017` 徽标）在这个插件下不显示。若需要，后续可复刻其标签渲染。
 - `Fast` 是提示词层速度模式，不改变真实解码速度；文案已明确。
+- 回合内改档：0.2.9 起会排队到回合结束才提交，所以「思考中拖档」对当前回合不生效、对下一回合生效（这是有意的）。
 - Herta 等第三方皮肤的 CSS 若用 `!important` 重写按钮，可能影响 trigger 观感；滑块本体（div）不受影响。
 - Windows 实测通过；macOS/Linux 未验证（CSS/指针事件理论上通用）。
 
@@ -133,7 +140,3 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - [ ] 不要提交 `node_modules/`、`.work/`、`dist/`、截图临时文件
 - [ ] 版本号/CHANGELOG 更新（当前 0.2.9）
 - [ ] 发布宣传时在简介写清「Fork / 基于 …」并 @ 上游作者（B站同类插件普遍这么做）
-
-## 发布审阅补充
-
-输入版本为0.2.8，其20项测试及48590字节原产物已独立复现。0.2.9修正重置Fast残留、排队补交与身份边界、特殊对象键和日志解码误报，新增回归后完整38项通过；运行`node --test test/*.test.mjs`覆盖全部测试。诊断需Node22.15+/24+ zstd能力，日志仅证明组装观察。具体7点判断见docs/REVIEW-0.2.9.md，原始私人总结与实际会话样例不进入仓库。

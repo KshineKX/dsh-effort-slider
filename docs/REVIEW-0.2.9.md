@@ -1,21 +1,24 @@
-# 0.2.8输入的7项审阅与0.2.9修正
+# 0.2.9 修正说明（复审记录）
 
-输入0.2.8的ZIP/源码哈希及20项测试先独立复现；不包含开发者私人路径、真实会话日志或原始总结。0.2.9是独立修正候选，不自动安装到真实DSH。
+本版由本地开发者交付构建，替代此前的审阅候选，作为 0.2.9 的最终内容。范围只覆盖滑杆插件本身；不扩大 DSH 兼容结论。
 
-| 审阅点 | 结论与处理 |
-| --- | --- |
-| vendor + anchor patch是否可持续 | 固定vendor内容、每个anchor恰好一次、双构建哈希及CI校验可支持当前小规模派生；上游结构漂移时故意失败。新增行为修正集中于scripts/review-patches.mjs。不在本轮重构整套UI；长期可考虑维护可编译源模块，但不能声称patch能适应任意上游更新 |
-| gate不抛错/不残留 | 两个gate均包住配置、上下文和记录访问；新增抛错getter/reader测试返回false，effort不匹配阻断Ultra。Fast是独立开关，原重置路径未关闭Host，已用真实bundle回调复现并修正；分布式回执失败仍不能做绝对无残留保证 |
-| state原子写/256/v1 | 原子替换失败保留原文件与调用方状态，v1兼容和256裁剪通过。特殊对象键曾丢失或影响原型，改为自有键安全读写并复测。单写者、无fsync/多进程锁及未知未来schema不保证是边界，不升级成数据库级可靠性承诺 |
-| 回合内排队/结束补交 | 原effect只依赖disabled且初始pending为null，之后只改ref不会启动轮询；原队列也只存effort。两条行为失败已复现。现存完整选择与身份，轮询就绪但只在有意图时探测，最新意图优先、跨上下文取消、未知busy不提交、失败不自动无限重试。Host是否启动回合与select之间仍有事务间隙，真实端到端竞争未在本轮验收 |
-| label子slot被shadow | 这是明确兼容取舍，继续记录模型徽标可能不显示；不复制或改写宿主标签实现，避免扩大维护面 |
-| Fast从装饰改提示词 | 作为显式会话策略合理，但必须说明不改模型解码速度、额度、服务端预算或收费标准。reset走同一Host写入通道、快速切换串行、失败回退并提示。仍需区分最后确认状态和网络回执未知 |
-| 构建产物入库 | 可以：让插件克隆即有client.js，同时保留MIT vendor、确定性构建及CI双重哈希校验。构建产物不是隐藏源码；源、bundle与版本清单需绑定同一提交 |
+## 两项 Host 联动修正
 
-## 验证与额外日志检查
+| 问题 | 0.2.8 行为 | 0.2.9 处理 |
+| --- | --- | --- |
+| 「重置为默认」只关界面 | reset 只 `setFast(false)`，没有写 Host，`effort-slider.json` 里仍是 `fast: true`，Host 继续注入「快速模式」 | reset 先 `POST /effort-slider/state { fast: false }`，用 Host 返回值回填本地状态，再切回默认档 |
+| 回合进行中的档位不进队列 | `sessionBusy()` 探测的 `sessions.turnOf / state / get / isRunning / running` 在 DSH 0.2.x 的 `ISessions` 里都不存在，恒为 `false`，档位立即提交 | 改读 `sessions.binding(id).session.getSnapshot().running`；挂起档位由独立定时器轮询，回合结束后补交，不再依赖 `disabled` 变化触发 |
 
-37项回归曾通过，补跨帧UTF-8后最终38项。包含原20项，9项实际组件回调的VM/hook调度测试，5项合成日志及4项gate/状态边界。VM调度器只验证相应数据流，不冒充React完整并发或浏览器布局。
+补充：`deferTimerRef` 在卸载时清理；reset 与闪电开关使用同一 Host 写入通道。
 
-原日志工具会在无zstd/解码错误时误报零注入，且按压缩内容中的magic搜索可能错误切帧；新工具使用Node解码器消费长度并在错误时退出2，所有测试只用显式虚构日志。Node22.15+/24+支持能力按实际检测，主体Node20兼容声明不等于日志工具支持Node20。system/message是Host组装日志证据，不是提供商实际接收或模型遵循的证明。
+## 验证
 
-原本不透明手柄、Tooltip、配色和粒子系数不变；本轮不做真实DSH重启/安装、GUI、长跑、速度或费用对比。源码、ZIP和CI通过后只交付私有审阅仓库与草稿，不自动公开。
+- `node scripts/build-client.mjs` → `client.js` 50,299 字节、SHA-256 `f2b616c063d5f652cfee487925635287c1e8de03cf0245e356f2fa97908efad7`，连续两次构建一致。
+- 测试：host 8 + bundle 14 + ModuleLoader 1 = **23 通过，0 失败**（每文件直接执行，不依赖测试运行器子进程）。
+- 新增 3 条回归测试：reset 必须清 Host Fast、busy 探测必须读会话快照、回合中的档位必须排队补交。
+- 本轮没有在本机重启/安装真实 DSH 做界面验收；原生 GUI、长跑、速度与费用对比不在本轮结论内。
+
+## 边界与许可
+
+- 只支持 DSH `>=0.2.0-rc.1 <0.3.0-0`；`Fast` 是提示词层速度模式，不改变解码速度或计费；注入不是给模型加额度。
+- UI 基座来自 bakabaicai/DSH-Codex-reasoning-effort-slider（Nachoneko_miao，MIT），Host 注入骨架参考 lizilong1993/dsh-unlimited-effort（MIT）后重写；两份许可全文见 `LICENSES/`，署名见 `NOTICE.md`。

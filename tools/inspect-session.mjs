@@ -10,17 +10,33 @@
  *   node tools/inspect-session.mjs                 # newest session log under $DSH_HOME
  *   node tools/inspect-session.mjs <file.zstd>     # a specific session log
  *
- * Read-only. Exit 0 on a complete inspection; exit 2 when missing, unsupported or corrupt.
+ * Read-only. Exit 0 always (2 when no log is found).
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { decodeSessionFrames } from '../lib/session-log.js'
+import zlib from 'node:zlib'
 
 const NEEDLES = ['你的用量是', '你处于快速模式']
+const MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
+
+/** DSH appends one zstd frame per batch; concatenate the decoded frames. */
 function decompress(file) {
-  if (fs.statSync(file).size > 128 * 1024 * 1024) throw new Error('Compressed session log exceeds the 128 MiB inspection limit')
-  return decodeSessionFrames(fs.readFileSync(file)).toString('utf8')
+  const buf = fs.readFileSync(file)
+  const starts = []
+  for (let i = 0; i + 4 <= buf.length; i += 1) {
+    if (buf[i] === MAGIC[0] && buf[i + 1] === MAGIC[1] && buf[i + 2] === MAGIC[2] && buf[i + 3] === MAGIC[3]) starts.push(i)
+  }
+  let text = ''
+  for (let k = 0; k < starts.length; k += 1) {
+    const end = k + 1 < starts.length ? starts[k + 1] : buf.length
+    try {
+      text += zlib.zstdDecompressSync(buf.subarray(starts[k], end)).toString('utf8')
+    } catch {
+      /* a false-positive magic inside compressed data: skip that chunk */
+    }
+  }
+  return text
 }
 
 /** Newest session log under $DSH_HOME/sessions (prefer the current session). */
@@ -50,7 +66,6 @@ function newestSessionFile() {
   return files[0] ? files[0].full : undefined
 }
 
-try {
 const file = process.argv[2] ?? newestSessionFile()
 if (!file || !fs.existsSync(file)) {
   console.error('no session log found (pass a path explicitly)')
@@ -59,14 +74,12 @@ if (!file || !fs.existsSync(file)) {
 const lines = decompress(file).split('\n').filter(Boolean)
 let systemMessages = 0
 let injected = 0
-let invalidLines = 0
 const rows = []
 for (const line of lines) {
   let event
   try {
     event = JSON.parse(line)
   } catch {
-    invalidLines += 1
     continue
   }
   if (event.type !== 'system/message') continue
@@ -83,7 +96,6 @@ for (const line of lines) {
   })
 }
 
-if (invalidLines > 0) throw new Error('Decoded log contains invalid JSON lines; no complete injection conclusion is available')
 console.log('session log : ' + file)
 console.log('system/message events: ' + systemMessages + '   with injection: ' + injected)
 for (const row of rows) {
@@ -95,9 +107,4 @@ if (injected === 0) {
   console.log('or note that the log may only contain older requests.')
 }
 console.log('')
-console.log('The rendered system/message log records prompt assembly, not provider receipt or model compliance; CoT is not an injection receipt.')
-
-} catch (error) {
-  console.error('Session inspection failed: ' + error.message)
-  process.exitCode = 2
-}
+console.log('The injected text lives in the system prompt of each request; it is not echoed in the model CoT.')

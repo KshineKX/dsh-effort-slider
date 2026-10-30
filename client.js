@@ -170,8 +170,7 @@ window.__ModuleLoader__.load({
       const busyRef = useRef(false);
       const lockedRef = useRef(false);
       const pendingRef = useRef(null);
-      const selectionRef = useRef(null);
-      const fastWriteRef = useRef({ generation: 0, tail: Promise.resolve() });
+      const deferTimerRef = useRef(null);
       const timersRef = useRef([]);
       const latest = useRef({});
       const hostRef = useRef(undefined);
@@ -182,12 +181,6 @@ window.__ModuleLoader__.load({
       const efforts = (model?.reasoning?.efforts || []).filter(e => order.includes(e.id))
         .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
       const savedEffort = selection?.reasoningEffort || model?.reasoning?.defaultEffort;
-      const currentIdentity = { sessionId, provider: selection?.provider, model: selection?.model, effort: savedEffort };
-      const previousIdentity = selectionRef.current;
-      if (previousIdentity && ['sessionId', 'provider', 'model', 'effort'].some(key => previousIdentity[key] !== currentIdentity[key])) pendingRef.current = null;
-      if (previousIdentity && previousIdentity.sessionId !== sessionId) { hostRef.current = undefined; fastWriteRef.current.generation++; }
-      selectionRef.current = currentIdentity;
-      function sameIdentity(identity) { const current = selectionRef.current; return identity && current && ['sessionId', 'provider', 'model', 'effort'].every(key => identity[key] === current[key]); }
       const displayed = preview || savedEffort;
       const index = Math.max(0, efforts.findIndex(e => e.id === displayed));
       const fraction = efforts.length > 1 ? index / (efforts.length - 1) : 0;
@@ -204,21 +197,6 @@ window.__ModuleLoader__.load({
       // 「最右档 = 火力全开」：effort 为 max 时让 Host 注入预算无上限，离开 max 立刻解除。
       // 快速模式是独立开关：Host 端另有一段「速度优先」提示，可与任意档位组合。
       // 两者都按 live selection / Host 记录对账，所以从 /model 命令弹窗改档也能保持一致。
-      function setFastIntent(nextFast) {
-        if (!sessionId) { setError(t('unavailable')); return; }
-        const id = sessionId, queue = fastWriteRef.current, generation = ++queue.generation;
-        setFast(nextFast); setError('');
-        const request = queue.tail.catch(() => {}).then(() => writeFastState(id, nextFast));
-        queue.tail = request;
-        request.then(payload => {
-          if (!mountedRef.current || selectionRef.current?.sessionId !== id || queue.generation !== generation) return;
-          hostRef.current = { ...hostRef.current, fast: payload.fast === true };
-          setFast(payload.fast === true);
-        }).catch(() => {
-          if (!mountedRef.current || selectionRef.current?.sessionId !== id || queue.generation !== generation) return;
-          setFast(hostRef.current?.fast === true); setError(t('failed'));
-        });
-      }
       function syncThrottle(effortId) {
         if (!sessionId) return;
         const want = effortId === THROTTLE_EFFORT;
@@ -233,33 +211,32 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         if (!sessionId) return undefined;
         let alive = true;
-        const readGeneration = fastWriteRef.current.generation;
-        setFast(false);
         readHostState(sessionId).then(payload => {
           if (!alive || !payload) return;
-          const fresh = readGeneration === fastWriteRef.current.generation;
-          hostRef.current = { enabled: payload.enabled === true, topEffortId: payload.topEffortId || undefined, fast: fresh ? payload.fast === true : hostRef.current?.fast === true };
-          if (fresh) setFast(payload.fast === true);
-          syncThrottleRef.current(selectionRef.current?.effort);
+          hostRef.current = { enabled: payload.enabled === true, topEffortId: payload.topEffortId || undefined, fast: payload.fast === true };
+          setFast(payload.fast === true);
+          syncThrottleRef.current(savedEffort);
         }).catch(() => {});
         return () => { alive = false; };
       }, [sessionId]);
       useEffect(() => { syncThrottleRef.current(savedEffort); }, [savedEffort]);
 
-      // Keep a lightweight timer ready; a ref-only queued intent does not change disabled.
+      // 运行中被挂起的档位：等回合结束、滑块重新可用时再补提交，而不是直接丢掉用户的意图。
       useEffect(() => {
-        if (disabled) return;
+        if (disabled || !pendingRef.current) return;
         let cancelled = false;
         const timer = setInterval(async () => {
-          if (cancelled || busyRef.current || !pendingRef.current) return;
-          const active = await sessionBusy();
-          if (cancelled || active || busyRef.current || !pendingRef.current) return;
-          const intent = pendingRef.current;
-          if (!sameIdentity(intent.origin)) { pendingRef.current = null; return; }
-          void commit(intent.next);
+          if (cancelled || busyRef.current) return;
+          const busy = await sessionBusy();
+          if (cancelled || busy || !pendingRef.current) return;
+          const next = pendingRef.current;
+          pendingRef.current = null;
+          clearInterval(timer);
+          lockedRef.current = true;
+          chooseEffort(next);
         }, 1200);
         return () => { cancelled = true; clearInterval(timer); };
-      }, [disabled, sessionId, selection?.provider, selection?.model, savedEffort]);
+      }, [disabled]);
 
       useEffect(() => {
         if (available) load();
@@ -277,6 +254,7 @@ window.__ModuleLoader__.load({
         return () => {
           mountedRef.current = false;
           timersRef.current.forEach(clearTimeout);
+          if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
         };
       }, []);
       function enterUltra() {
@@ -301,36 +279,61 @@ window.__ModuleLoader__.load({
       // 向 sessions 服务实时询问该会话是否有进行中的回合。
       // ctx 只存在于 apply(ctx) 作用域，组件内拿不到，因此由模块级 sessionsRef 注入。
       async function sessionBusy() {
-        const probe = sessionsRef.current, key = sessionId;
-        if (!probe || key === undefined) return true;
+        const probe = sessionsRef.current;
+        const key = sessionId;
+        if (!probe || key === undefined) return false;
         try {
-          if (typeof probe.turnOf === 'function') return Boolean(await probe.turnOf(key));
-          if (typeof probe.state === 'function') return Boolean((await probe.state(key))?.turn);
-          if (typeof probe.get === 'function') return Boolean((await probe.get(key))?.turn);
-          if (typeof probe.isRunning === 'function') return Boolean(await probe.isRunning(key));
-          if (typeof probe.running === 'function') return Boolean(await probe.running(key));
-        } catch { return true; }
-        return true;
+          // DSH 0.2.x 的 ISessions 没有 turnOf/state/isRunning；真实运行状态在
+          // binding(id).session（SessionFace = ISession & ObservableSnapshot<SessionSnapshot>）里。
+          if (typeof probe.binding === 'function') {
+            const bound = probe.binding(key);
+            const face = bound && bound.session;
+            const snapshot = face && typeof face.getSnapshot === 'function' ? face.getSnapshot() : undefined;
+            if (snapshot !== undefined && typeof snapshot.running === 'boolean') return snapshot.running;
+          }
+          if (typeof probe.turnOf === 'function') return Boolean(probe.turnOf(key));
+          if (typeof probe.state === 'function') return Boolean(probe.state(key)?.turn);
+          if (typeof probe.get === 'function') return Boolean(probe.get(key)?.turn);
+          if (typeof probe.isRunning === 'function') return Boolean(probe.isRunning(key));
+          if (typeof probe.running === 'function') return Boolean(probe.running(key));
+        } catch { return false; }
+        return false;
       }
       async function commit(next) {
         if (disabled || busyRef.current || !next) return;
-        const origin = selectionRef.current;
-        busyRef.current = true; setBusy(true); setError('');
+        busyRef.current = true;
+        setBusy(true);
+        setError('');
         try {
-          const active = await sessionBusy();
-          if (!mountedRef.current || !sameIdentity(origin)) return;
-          if (active) { pendingRef.current = { origin, next: { ...next } }; return; }
+          // 二次确认：走到这里才发现回合已经开始，就把提交交还给挂起队列。
+          if (await sessionBusy()) {
+            pendingRef.current = next.reasoningEffort ?? null;
+            const wanted = next.reasoningEffort ?? null;
+            if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
+            deferTimerRef.current = setInterval(async () => {
+              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
+              if (await sessionBusy()) return;
+              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
+              clearInterval(deferTimerRef.current);
+              deferTimerRef.current = null;
+              chooseEffort(wanted);
+            }, 1200);
+            return;
+          }
           const result = await select(next);
           if (result && !result.ok) throw new Error(result.error?.message || t('failed'));
           if (result === undefined) throw new Error(t('unavailable'));
-          const queued = pendingRef.current;
-          if (queued && sameIdentity(queued.origin) && ['provider','model','reasoningEffort'].every(key => queued.next[key] === next[key])) pendingRef.current = null;
+          // 真正落盘成功，清掉挂起意图
+          if (pendingRef.current === next.reasoningEffort) pendingRef.current = null;
         } catch (cause) {
-          pendingRef.current = null;
           if (mountedRef.current) setError(cause.message || t('failed'));
         } finally {
           busyRef.current = false;
-          if (mountedRef.current) { setBusy(false); setPreview(null); previewRef.current = null; }
+          if (mountedRef.current) {
+            setBusy(false);
+            setPreview(null);
+            previewRef.current = null;
+          }
         }
       }
       function chooseEffort(id) {
@@ -344,7 +347,7 @@ window.__ModuleLoader__.load({
           setPreview(null);
           return;
         }
-        pendingRef.current = { origin: selectionRef.current, next: { ...selection, reasoningEffort: id } };
+        pendingRef.current = id;
         // commit() 内部会再向 sessions 确认一次；这里不提前拦截，避免 UI 状态滞后导致漏提交。
         void commit({ ...selection, reasoningEffort: id });
       }
@@ -560,17 +563,35 @@ window.__ModuleLoader__.load({
         'aria-hidden': !open, inert: !open ? '' : undefined, style: { '--dsh-codex-reasoning-effort-slider-height': `${pane === 'models' ? menuHeight : 104}px` } },
           modelsView,
           h('div', { className: `dsh-codex-reasoning-effort-slider-pane dsh-codex-reasoning-effort-slider-main${pane !== 'effort' ? ' hidden' : ''}`, inert: pane !== 'effort' ? '' : undefined },
-            h('button', { className: `dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-fast${fast ? ' active' : ''}`, 'aria-label': t('fast'), 'aria-pressed': fast, onClick: () => setFastIntent(!fast) },
+            h('button', { className: `dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-fast${fast ? ' active' : ''}`, 'aria-label': t('fast'), 'aria-pressed': fast, onClick: () => {
+                const nextFast = !fast;
+                setFast(nextFast);
+                if (sessionId) {
+                  writeFastState(sessionId, nextFast).then(payload => {
+                    hostRef.current = { ...hostRef.current, fast: payload.fast === true };
+                    setFast(payload.fast === true);
+                  }).catch(() => {});
+                }
+              } },
               h('svg', { className: 'dsh-codex-reasoning-effort-slider-bolt', viewBox: '0 0 24 24', 'aria-hidden': true },
                 h('path', { d: 'M14.4 2Q16 .2 15.8 2.5L15.1 8.5H20.5Q22 8.5 21 9.8L10.7 21.7Q9 23.4 9.2 21.2L10 14.2H4.2Q2.6 14.2 3.6 12.9L14.4 2Z' })),
               h('span', { className: 'dsh-codex-reasoning-effort-slider-tooltip', role: 'tooltip' },
                 h('span', null, t('fast')), h('span', null, t('usage')), h('span', null, t('visual')))),
-            h('button', { className: 'dsh-codex-reasoning-effort-slider-model-link', onClick: () => setPane('models'), 'aria-label': t('model'), title: ultra ? modelName + ' · Ultra：请求使用 max 且 Host 状态已开启时附加提示词' : modelName },
+            h('button', { className: 'dsh-codex-reasoning-effort-slider-model-link', onClick: () => setPane('models'), 'aria-label': t('model'), title: ultra ? modelName + ' · Ultra = 火力全开（已注入预算无上限）' : modelName },
               h('span', { className: 'dsh-codex-reasoning-effort-slider-heading' }, currentLabel || t('choose'), icon('chevron', true)),
               h('span', { className: 'dsh-codex-reasoning-effort-slider-model' }, modelName)),
             h('div', { className: 'dsh-codex-reasoning-effort-slider-warning' }, h('span', null, t('warning'))),
             h('button', { className: 'dsh-codex-reasoning-effort-slider-tool dsh-codex-reasoning-effort-slider-reset', disabled: busy || !model?.reasoning, 'aria-label': t('reset'),
-              onClick: () => { setFastIntent(false); chooseEffort(model?.reasoning?.defaultEffort); }
+              onClick: () => {
+                setFast(false);
+                if (sessionId) {
+                  writeFastState(sessionId, false).then(payload => {
+                    hostRef.current = { ...hostRef.current, fast: payload.fast === true };
+                    setFast(payload.fast === true);
+                  }).catch(() => {});
+                }
+                chooseEffort(model?.reasoning?.defaultEffort);
+              }
             }, icon('reset'), h('span', { className: 'dsh-codex-reasoning-effort-slider-tooltip', role: 'tooltip' }, t('reset'))),
             efforts.length ? h('div', { className: `dsh-codex-reasoning-effort-slider-rail${dragging ? ' dragging' : ''}`, ref: railRef,
               'data-effort': displayed || '', 'data-locked': locked ? '' : undefined,

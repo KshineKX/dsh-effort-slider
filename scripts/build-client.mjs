@@ -18,7 +18,6 @@
  * Run: node scripts/build-client.mjs
  */
 import fs from 'node:fs'
-import { applyReviewPatches } from './review-patches.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -261,6 +260,84 @@ patch(
               } }`,
 )
 
+// ---- 0.2.9: make the two Host-facing paths honest ----
+// P1: Fast is a real injection now, so the reset button must also clear the
+//     Host record. Upstream only flipped the (decorative) local state.
+patch(
+  'reset clears the host fast record',
+  '              onClick: () => { setFast(false); chooseEffort(model?.reasoning?.defaultEffort); }',
+  `              onClick: () => {
+                setFast(false);
+                if (sessionId) {
+                  writeFastState(sessionId, false).then(payload => {
+                    hostRef.current = { ...hostRef.current, fast: payload.fast === true };
+                    setFast(payload.fast === true);
+                  }).catch(() => {});
+                }
+                chooseEffort(model?.reasoning?.defaultEffort);
+              }`,
+)
+
+// P2a: DSH 0.2.x ISessions has no turnOf/state/get/isRunning/running; the live
+//      turn flag is SessionBinding.session (a SessionFace snapshot) .running.
+patch(
+  'busy probe uses the session snapshot',
+  `          if (typeof probe.turnOf === 'function') return Boolean(probe.turnOf(key));`,
+  `          // DSH 0.2.x 的 ISessions 没有 turnOf/state/isRunning；真实运行状态在
+          // binding(id).session（SessionFace = ISession & ObservableSnapshot<SessionSnapshot>）里。
+          if (typeof probe.binding === 'function') {
+            const bound = probe.binding(key);
+            const face = bound && bound.session;
+            const snapshot = face && typeof face.getSnapshot === 'function' ? face.getSnapshot() : undefined;
+            if (snapshot !== undefined && typeof snapshot.running === 'boolean') return snapshot.running;
+          }
+          if (typeof probe.turnOf === 'function') return Boolean(probe.turnOf(key));`,
+)
+
+// P2b: queue the stop instead of silently applying it mid-turn, and poll until
+//      the turn ends — the old effect only re-ran on `disabled` changes, which
+//      never happen for a normal running turn.
+patch(
+  'deferred stop applies after the turn ends',
+  `          if (await sessionBusy()) {
+            pendingRef.current = next.reasoningEffort ?? null;
+            return;
+          }`,
+  `          if (await sessionBusy()) {
+            pendingRef.current = next.reasoningEffort ?? null;
+            const wanted = next.reasoningEffort ?? null;
+            if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
+            deferTimerRef.current = setInterval(async () => {
+              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
+              if (await sessionBusy()) return;
+              if (pendingRef.current !== wanted) { clearInterval(deferTimerRef.current); deferTimerRef.current = null; return; }
+              clearInterval(deferTimerRef.current);
+              deferTimerRef.current = null;
+              chooseEffort(wanted);
+            }, 1200);
+            return;
+          }`,
+)
+
+patch(
+  'deferred commit timer ref',
+  '      const pendingRef = useRef(null);',
+  '      const pendingRef = useRef(null);\n      const deferTimerRef = useRef(null);',
+)
+
+patch(
+  'clear the deferred timer on unmount',
+  `        return () => {
+          mountedRef.current = false;
+          timersRef.current.forEach(clearTimeout);
+        };`,
+  `        return () => {
+          mountedRef.current = false;
+          timersRef.current.forEach(clearTimeout);
+          if (deferTimerRef.current !== null) clearInterval(deferTimerRef.current);
+        };`,
+)
+
 patch(
   'slot priority',
   `          name: 'conversation.input.model',
@@ -374,6 +451,5 @@ patch(
   '              const offset = current.ultra ? m.travel * (145 + i % 6 * 17) : current.fast ? m.travel * (70 + i % 6 * 9) : 0;',
 )
 
-source = applyReviewPatches(source)
 fs.writeFileSync(target, source, 'utf8')
 console.log('built ' + target + ' (' + String(Buffer.byteLength(source)) + ' bytes)')

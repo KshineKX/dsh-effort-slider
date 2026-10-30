@@ -35,7 +35,3 @@
   `window.__ModuleLoader__` 的打包形态与主题兼容 CSS 的写法（本插件已换用上面的 Codex 复刻实现）。
 - DeepSeek Harness 的插件 API、slot 体系、`systemPrompt` 与 `webServer` 服务均为其公开接口。
 - 注入文本灵感来自 DSH 仓库 `docs/testing.zh.md` 的公开测试策略一节。
-
-## 0.2.9派生修正
-
-上游vendor字节与MIT全文保持。scripts/review-patches.mjs在原构建之后以anchor断言修正状态同步/排队；lib/state.js补特殊键安全读写，lib/session-log.js与日志检查工具补解码边界，相关测试为本项目新增。代码许可不授予OpenAI/DeepSeek商标或官方合作身份。精确采用文件的内容身份由分发清单记录，不伪造未记录的原始上游提交。

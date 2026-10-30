@@ -91,9 +91,36 @@ test('ultra stop arms the throttle and the bolt toggles a real fast-mode prompt'
   assert.match(source, /THROTTLE_EFFORT = 'max'/)
   assert.match(source, /writeHostState\(sessionId, want/)
   assert.match(source, /readHostState\(sessionId\)/)
-  assert.match(source, /syncThrottleRef\.current\(selectionRef\.current\?\.effort\)/)
-  assert.match(source, /writeFastState\(id, nextFast\)/)
+  assert.match(source, /syncThrottleRef\.current\(savedEffort\)/)
+  assert.match(source, /writeFastState\(sessionId, nextFast\)/)
   assert.match(source, /setFast\(payload\.fast === true\)/)
+})
+
+test('reset to default also clears the host fast record', () => {
+  assert.match(
+    source,
+    /onClick: \(\) => \{\s*setFast\(false\);\s*if \(sessionId\) \{\s*writeFastState\(sessionId, false\)\.then\(/,
+    'reset must POST fast:false, not only flip the local state',
+  )
+  assert.match(
+    source,
+    /writeFastState\(sessionId, false\)\.then\(payload => \{[^]*?setFast\(payload\.fast === true\)/,
+    'reset must adopt the host answer, like the bolt toggle does',
+  )
+})
+
+test('busy probe reads the real session snapshot instead of the removed turnOf helpers', () => {
+  assert.match(source, /probe\.binding\(key\)/)
+  assert.match(source, /face\.getSnapshot\(\)/)
+  assert.match(source, /typeof snapshot\.running === 'boolean'\) return snapshot\.running/)
+})
+
+test('a stop picked mid-turn is queued and applied after the turn ends', () => {
+  assert.match(source, /const deferTimerRef = useRef\(null\)/)
+  assert.match(source, /pendingRef\.current = next\.reasoningEffort \?\? null/)
+  assert.match(source, /deferTimerRef\.current = setInterval\(async \(\) => \{/)
+  assert.match(source, /if \(await sessionBusy\(\)\) return;/)
+  assert.match(source, /chooseEffort\(wanted\)/)
 })
 
 test('client bundle only talks to the loopback host route and same-origin', () => {

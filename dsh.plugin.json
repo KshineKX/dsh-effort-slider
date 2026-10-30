@@ -2,7 +2,7 @@
   "id": "dsh-external/dsh-effort-slider",
   "version": "0.2.9",
   "main": "./index.js",
-  "description": "DSH 的 Codex 风格推理滑杆：Ultra(max)/Fast 会话提示词策略、实心控件与拖动吸附，含重置同步和排队保护；不增加额度或直接加速模型。",
+  "description": "Codex 质感思考强度滑杆（DSH composer）：最右档 Ultra = 火力全开，向系统提示词注入「预算无上限」。",
   "engines": {
     "dsh": ">=0.2.0-rc.1 <0.3.0-0"
   },

@@ -2,11 +2,14 @@
 
 ## 0.2.9
 
-- 修复“重置为默认”只关闭UI Fast却未关闭Host提示词的问题；Fast写入串行化，失败显示错误并回退确认状态。
-- 修复忙碌回合排队不启动轮询、只保存effort丢失模型身份的问题；跨会话/模型/实际选择变化取消旧意图，探测失败不自动放行，提交失败不无限重试。
-- 特殊会话ID按自有数据键持久化，避免__proto__等键改变对象原型或丢记录。
-- 日志工具按解码器消费字节处理完整多帧，保留跨帧UTF-8，损坏或缺少zstd显式失败；不再以magic扫描和静默跳过作为完整验证。
-- 38项隔离回归，校正提示词、日志证据和兼容范围文案；原0.2.8视觉、vendor和许可证保留。
+- 修复「重置为默认」只关界面、不清 Host 状态的问题：reset 现在同时 `POST /effort-slider/state
+  { fast: false }`，Host 不再继续注入「快速模式」提示词（上游的 Fast 是装饰开关，reset 只关了
+  本地状态；我们把 Fast 改成真实注入后漏改了这里）。
+- 修复「回合进行中不提交档位」的保护实际不生效：旧代码探测的 `sessions.turnOf / state / get /
+  isRunning / running` 在 DSH 0.2.x 的 `ISessions` 里都不存在，探测恒为 false。0.2.9 改用
+  `sessions.binding(id).session.getSnapshot().running`（`SessionSnapshot.running`），并让排队的
+  档位用独立定时器轮询，回合真正结束后才提交——不再依赖 `disabled` 状态变化触发补交。
+- 新增 3 条回归测试：reset 必须清 Host Fast、busy 探测必须读会话快照、回合中的档位必须排队补交。
 
 ## 0.2.8
 
