@@ -848,16 +848,21 @@ patch(
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          // 统一用 px/s：Ultra 单独 68，Ultra+Fast 保持 1.4 倍（≈95）并平滑过渡；
-          // Low/High+Fast 按填充宽度换算（120×系数）。
+          // 统一用 px/s：Ultra 单独 68（已定稿），Ultra+Fast 118 并带 1.2s easeOutBack 加速段——
+          // 从 Ultra 的速度冲上去、轻微过冲再落定，肉眼能看出“由 Ultra 过渡而来”。
           const fillWidth = 26 + (width - 26) * (current.position || 0);
           const targetPx = current.ultra
-            ? (current.fast ? 95 : 68)
+            ? (current.fast ? 118 : 68)
             : current.fast ? 120 * effortSpeed : 0;
-          if (m.changedAt === 0) { m.speed = targetPx; m.target = targetPx; }
+          if (m.changedAt === 0) { m.speed = targetPx; m.from = targetPx; m.target = targetPx; }
           if (targetPx !== m.target) { m.from = m.speed; m.target = targetPx; m.changedAt = time; }
-          const blend = Math.min(1, Math.max(0, (time - m.changedAt) / 600));
-          m.speed = m.from + (m.target - m.from) * blend * blend * (3 - 2 * blend);
+          const span = current.ultra ? 1200 : 600;
+          const p = Math.min(1, Math.max(0, (time - m.changedAt) / span));
+          const accelerating = m.target > m.from;
+          const c1 = 1.70158, c3 = c1 + 1;
+          const q = p - 1;
+          const eased = accelerating ? 1 + c3 * q * q * q + c1 * q * q : p * p * (3 - 2 * p);
+          m.speed = m.from + (m.target - m.from) * eased;
           const seconds = m.speed > 0.5 ? fillWidth / m.speed : 2.75;
           if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', seconds.toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);

@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 0.2.17
+
+- Ultra+Fast 再快一点：95→118 px/s；加速段改为 1.2s easeOutBack（冲上去轻微过冲再落定），
+  从 Ultra 的 68 px/s 过渡到 Ultra+Fast 时能看到明显“提速-回落”过程。
+- Ultra 单独维持 68 px/s；Low/High+Fast 不变。
 ## 0.2.16
 
 - Ultra 与 Ultra+Fast 再略快一点：Ultra 58.6→68 px/s（约 3.65s/圈），Ultra+Fast 82→95 px/s（约 2.6s/圈，仍为 1.4 倍），600ms 缓动过渡不变。
