@@ -111,7 +111,20 @@ patch(
 patch(
   'trigger carries the effort as a data attribute',
   "h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, ref: triggerRef, disabled,",
-  "h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, 'data-effort': savedEffort || '', ref: triggerRef, disabled,",
+  "h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${displayed === 'max' ? ' ultra' : ''}`, 'data-effort': displayed || '', ref: triggerRef, disabled,",
+)
+
+// The popup already previews the pending stop, so the trigger must show the same
+// value (otherwise a queued pick reads as "popup High / trigger Low").
+patch(
+  'trigger follows the displayed stop',
+  "      const triggerLabel = labels[savedEffort] || state.retainedEffort || '';",
+  "      const triggerLabel = labels[displayed] || state.retainedEffort || '';\n      const pendingStop = preview !== null && preview !== savedEffort;",
+)
+patch(
+  'trigger tolerates a pending stop in its aria label',
+  "'aria-label': `${modelName} ${triggerLabel}`, 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-busy': busy,",
+  "'aria-label': `${modelName} ${triggerLabel}${pendingStop ? ' · pending' : ''}`, 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-busy': busy || pendingStop,",
 )
 
 // Same trap as the knob: the tooltip background was the theme token
@@ -433,7 +446,7 @@ patch(
 patch(
   'latest state carries the effort id for the drift speed',
   'latest.current = { open: present, fast, ultra, pane, disabled };',
-  'latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed };',
+  'latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction };',
 )
 patch(
   'spark travel accumulates for fast as well',
@@ -544,10 +557,23 @@ patch(
           const result = await select(next);
           if (result && !result.ok) throw new Error(result.error?.message || t('failed'));
           if (result === undefined) throw new Error(t('unavailable'));
+          retryRef.current = 0;
           if (pendingRef.current === next) pendingRef.current = null;
         } catch (cause) {
+          const message = String(cause && cause.message || '');
+          // 宿主重启/连接重建时，DSH 客户端会把 selectModel 报成 “Failed to fetch”。
+          // 传输层失败先静默重试两次，不把原始 client api 报错甩给用户。
+          if (/failed to fetch|network|load failed|fetch/i.test(message) && retryRef.current < 2) {
+            retryRef.current += 1;
+            queued = true;
+            pendingRef.current = next;
+            scheduleDeferredCommit();
+            return;
+          }
+          retryRef.current = 0;
+          queued = false;
           if (pendingRef.current === next) { pendingRef.current = null; stopDeferTimer(); }
-          if (mountedRef.current) setError(cause.message || t('failed'));
+          if (mountedRef.current) { setPreview(null); previewRef.current = null; setError(message || t('failed')); }
         } finally {
           busyRef.current = false;
           if (mountedRef.current) {
@@ -614,7 +640,7 @@ patch(
 patch(
   'fast write sequence ref',
   '      const pendingRef = useRef(null);\n      const deferTimerRef = useRef(null);',
-  '      const pendingRef = useRef(null);\n      const deferTimerRef = useRef(null);\n      const fastWriteSeqRef = useRef(0);',
+  '      const pendingRef = useRef(null);\n      const deferTimerRef = useRef(null);\n      const retryRef = useRef(0);\n      const fastWriteSeqRef = useRef(0);',
 )
 
 patch(
@@ -822,7 +848,9 @@ patch(
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (2.75 / Math.max(speed, 0.05)).toFixed(2) + 's');
+          // 时长按填充宽度换算，保证 px/s 恒定：Low 的填充很窄，固定时长会显得几乎不动。
+          const fillWidth = 26 + (width - 26) * (current.position || 0);
+          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (fillWidth / (320 * Math.max(speed, 0.05))).toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
           if (current.open && m.burst && time - m.burst < 520) {
             const age = (time - m.burst) / 1000;

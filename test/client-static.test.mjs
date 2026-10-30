@@ -22,7 +22,7 @@ test('per-stop accent colours: Low green, High blue, Ultra purple, via data-effo
   assert.match(source, /trigger\[data-effort="low"\] .*trigger-effort\{color:#22c55e\}/)
   assert.match(source, /trigger\[data-effort="high"\] .*trigger-effort\{color:#3989e9\}/)
   assert.ok(source.includes("'data-effort': displayed || ''"))
-  assert.ok(source.includes("'data-effort': savedEffort || ''"))
+  assert.ok(source.includes('const triggerLabel = labels[displayed]'), 'trigger label must follow the previewed stop, like the popup')
 })
 
 test('fast mode drifts the spark dots on the compositor, high faster than low', () => {
@@ -30,7 +30,7 @@ test('fast mode drifts the spark dots on the compositor, high faster than low', 
   assert.match(source, /@keyframes dsh-codex-reasoning-effort-slider-sparkdrift\{from\{transform:translate3d\(0,0,0\)\}to\{transform:translate3d\(-50%,0,0\)\}\}/)
   assert.match(source, /const effortSpeed = current\.effort === 'low' \? 0\.18 : current\.effort === 'high' \? 0\.45 : 0\.3/)
   assert.match(source, /const speed = current\.ultra \? \(current\.fast \? 1 : 0\.65\) : current\.fast \? effortSpeed : 0\.65/)
-  assert.match(source, /\(2\.75 \/ Math\.max\(speed, 0\.05\)\)\.toFixed\(2\)/)
+  assert.match(source, /\(fillWidth \/ \(320 \* Math\.max\(speed, 0\.05\)\)\)\.toFixed\(2\)/)
   assert.match(source, /effort: displayed/)
   assert.ok(!source.includes('m.travel'), 'the per-frame particle travel must be gone; CSS owns the drift')
   assert.ok(/paintDots\(width\)/.test(source), 'the dot sprite must be painted once, not every frame')

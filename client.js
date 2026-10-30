@@ -173,6 +173,7 @@ window.__ModuleLoader__.load({
       const lockedRef = useRef(false);
       const pendingRef = useRef(null);
       const deferTimerRef = useRef(null);
+      const retryRef = useRef(0);
       const fastWriteSeqRef = useRef(0);
       const timersRef = useRef([]);
       const latest = useRef({});
@@ -195,7 +196,7 @@ window.__ModuleLoader__.load({
       const running = Boolean(locked || state.pending);
       const disabled = Boolean(locked || !available || running);
       const motion = useRef({ speed: 0, from: 0, target: 0, changedAt: 0, travel: 0, burst: 0 });
-      latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed };
+      latest.current = { open: present, fast, ultra, pane, disabled, effort: displayed, position: fraction };
 
       // 「最右档 = 火力全开」：effort 为 max 时让 Host 注入预算无上限，离开 max 立刻解除。
       // 快速模式是独立开关：Host 端另有一段「速度优先」提示，可与任意档位组合。
@@ -333,10 +334,23 @@ window.__ModuleLoader__.load({
           const result = await select(next);
           if (result && !result.ok) throw new Error(result.error?.message || t('failed'));
           if (result === undefined) throw new Error(t('unavailable'));
+          retryRef.current = 0;
           if (pendingRef.current === next) pendingRef.current = null;
         } catch (cause) {
+          const message = String(cause && cause.message || '');
+          // 宿主重启/连接重建时，DSH 客户端会把 selectModel 报成 “Failed to fetch”。
+          // 传输层失败先静默重试两次，不把原始 client api 报错甩给用户。
+          if (/failed to fetch|network|load failed|fetch/i.test(message) && retryRef.current < 2) {
+            retryRef.current += 1;
+            queued = true;
+            pendingRef.current = next;
+            scheduleDeferredCommit();
+            return;
+          }
+          retryRef.current = 0;
+          queued = false;
           if (pendingRef.current === next) { pendingRef.current = null; stopDeferTimer(); }
-          if (mountedRef.current) setError(cause.message || t('failed'));
+          if (mountedRef.current) { setPreview(null); previewRef.current = null; setError(message || t('failed')); }
         } finally {
           busyRef.current = false;
           if (mountedRef.current) {
@@ -455,7 +469,9 @@ window.__ModuleLoader__.load({
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (2.75 / Math.max(speed, 0.05)).toFixed(2) + 's');
+          // 时长按填充宽度换算，保证 px/s 恒定：Low 的填充很窄，固定时长会显得几乎不动。
+          const fillWidth = 26 + (width - 26) * (current.position || 0);
+          if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', (fillWidth / (320 * Math.max(speed, 0.05))).toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
           if (current.open && m.burst && time - m.burst < 520) {
             const age = (time - m.burst) / 1000;
@@ -556,7 +572,8 @@ window.__ModuleLoader__.load({
       const classes = `dsh-codex-reasoning-effort-slider-popup${!open ? ' closed' : ''}${ultra ? ' ultra' : ''}${fast ? ' fast-mode' : ''}${message ? ' message' : ''}${running ? ' locked' : ''}`;
       const status = error || state.error || '';
       const currentLabel = labels[displayed] || state.retainedEffort || '';
-      const triggerLabel = labels[savedEffort] || state.retainedEffort || '';
+      const triggerLabel = labels[displayed] || state.retainedEffort || '';
+      const pendingStop = preview !== null && preview !== savedEffort;
       const modelCount = state.groups.reduce((count, provider) => count + provider.models.length, 0);
       const menuHeight = 34 + Math.max(1, modelCount) * 30 + (state.groups.length > 1 ? state.groups.length * 22 : 0);
       const modelsView = h('div', { className: `dsh-codex-reasoning-effort-slider-pane dsh-codex-reasoning-effort-slider-models${pane !== 'models' ? ' hidden' : ''}`,
@@ -647,8 +664,8 @@ window.__ModuleLoader__.load({
               onClick: () => { setError(''); load(); } }, icon('reset', true))) : null);
       return h('div', { className: 'dsh-codex-reasoning-effort-slider-root', ref: rootRef, 'data-dsh-codex-reasoning-effort-slider-session': true },
         h('style', null, styles),
-        h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${savedEffort === 'max' ? ' ultra' : ''}`, 'data-effort': savedEffort || '', ref: triggerRef, disabled,
-          'aria-label': `${modelName} ${triggerLabel}`, 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-busy': busy,
+        h('button', { className: `dsh-codex-reasoning-effort-slider-trigger${displayed === 'max' ? ' ultra' : ''}`, 'data-effort': displayed || '', ref: triggerRef, disabled,
+          'aria-label': `${modelName} ${triggerLabel}${pendingStop ? ' · pending' : ''}`, 'aria-expanded': open, 'aria-haspopup': 'dialog', 'aria-busy': busy || pendingStop,
           onClick: () => {
             if (open) close();
             else { setPane(model ? 'effort' : 'models'); setOpen(true); load(); }

@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.2.11
+
+- 修正弹层与触发器不一致：触发器档位文字/`data-effort` 现在跟随 `displayed`（含排队预览），
+  排队时 aria 标注 pending，不再出现「弹层 High、触发器 Low」。
+- 白点漂移速度改为按填充宽度换算恒定 px/s（320×系数）：Low+Fast 57.6px/s、High+Fast 144px/s，
+  不再因为 Low 的填充窄而显得几乎不动。
+- DSH 客户端把 `selectModel` 报成 `Failed to fetch`（宿主重启/连接重建）时静默重试两次，
+  仍失败才清掉预览并显示错误，不再留下「界面 High、实际 Low」的中间态。
 ## 0.2.10
 
 - 修复审核报告的 3 项行为问题（对应 0.2.9 的遗漏）：
