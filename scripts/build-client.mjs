@@ -70,7 +70,7 @@ patch(
 )
 
 // The knob must read as a solid physical puck. The theme token it used
-// (--dsw-alias-bg-layer-2) is translucent in some skins (e.g. Herta), which let
+// (--dsw-alias-bg-layer-2) is translucent in some skins, which let
 // the fill show through; an explicit white puck is opaque in every theme.
 patch(
   'opaque knob',
@@ -128,7 +128,7 @@ patch(
 )
 
 // Same trap as the knob: the tooltip background was the theme token
-// --dsw-alias-bg-layer-2, which some skins (Herta) set to transparent. The help
+// --dsw-alias-bg-layer-2, which some skins set to transparent. The help
 // text then floats over the page. Use an opaque menu surface + hairline border
 // so both the Fast and Reset tooltips stay readable in every theme.
 patch(
