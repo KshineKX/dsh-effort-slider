@@ -1,6 +1,6 @@
 {
   "name": "dsh-effort-slider",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "private": true,
   "description": "Codex 质感的思考强度滑杆（DSH composer）：最右档 Ultra = 火力全开，向系统提示词注入「预算无上限」。",
   "type": "module",
