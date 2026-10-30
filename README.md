@@ -24,7 +24,7 @@ Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追�
 - 本项目代码使用 **MIT License**：允许使用、修改、再分发与商用，须保留适用的版权与许可声明；软件按现状提供，不附担保。详见 [LICENSE](LICENSE)、[NOTICE.md](NOTICE.md) 和 [LICENSES/](LICENSES/)。
 - 本仓库为独立建立的衍生项目，GitHub 元数据不是 fork；代码来源仍须明确保留，不以“独立仓库”表示全部原创。
 - 浏览器 UI 基于 [bakabaicai/DSH-Codex-reasoning-effort-slider](https://github.com/bakabaicai/DSH-Codex-reasoning-effort-slider)（Nachoneko_miao，MIT），Host 注入骨架参考并重写自 [lizilong1993/dsh-unlimited-effort](https://github.com/lizilong1993/dsh-unlimited-effort)（MIT）。本项目增加 Host 联动、完整选择排队、状态错误处理、皮肤兼容样式及动画修改；来源文件哈希见 [PROVENANCE.md](PROVENANCE.md)。
-- 第三方社区插件，与 OpenAI/Codex、DeepSeek 均无官方隶属或背书关系。MIT 声明适用于本项目代码，不表示获得第三方商标或另行安装的角色皮肤素材授权；发行包不含这些皮肤。
+- 第三方社区插件，与 OpenAI/Codex、DeepSeek 均无官方隶属或背书关系。
 - 当前仍为开发者预发行版。Windows 本机启动与面板打开已验证；用户报告本机试用可用。干净机器、其他平台和性能基线仍未验收。
 
 ## 它是什么
@@ -111,13 +111,13 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
    最右档会露出半格灰。本仓库把**手柄改为 26px 与滑轨同高、完整落在滑轨内**，填充一直填到
    手柄右缘。
 2. **实体手柄**：手柄改用显式白色渐变（`#fff → #eef0f3`）+ 1px 描边 + 投影，不再用主题的
-   `--dsw-alias-bg-layer-2`——有些皮肤（如大黑塔）把这个 token 定义成半透明，会透出下面的填充。
+   `--dsw-alias-bg-layer-2`——有些皮肤把这个 token 定义成半透明，会透出下面的填充。
    悬停/按下不再放大（避免再次超出滑轨），改用 3px 白色光环做反馈。
 3. **填充两端始终圆角**：上游只在最右档靠不可见手柄掩盖方角，现在无论哪一档都是 16px 圆角，
    不会出现「只有 Ultra 才圆润」。
 4. **拖动跟手、松手吸附**：按住时手柄/填充 1:1 跟随指针，松手才吸附最近档并提交。
 5. **工具提示（Tooltip）不透明**：Fast 与「重置为默认」的说明气泡原来也用
-   `--dsw-alias-bg-layer-2`（大黑塔把它设为透明），文字会浮在页面内容上；现在改用不透明菜单面
+   `--dsw-alias-bg-layer-2`（某些主题会将其设为透明），文字会浮在页面内容上；现在改用不透明菜单面
    + 细边框 + 阴影，两个气泡都清晰可读。
 6. **档位配色**：Low 绿色、High 蓝色、Ultra 紫色；填充、标题和触发器档位文字都由轨道的
    `data-effort` 驱动，和主题无关。

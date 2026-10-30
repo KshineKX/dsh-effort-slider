@@ -27,6 +27,6 @@
 
 RorschachXR/dsh-full-throttle仅作历史参考，交接声明未复制其无明确许可证的代码；本次未重新做逐行来源鉴定，不把该项目列为已获许可依赖。
 
-根LICENSE为MIT，版权行为dsh-effort-slider contributors；第三方版权行仍分别保留。docs/preview.png是滑杆效果预览，非角色皮肤资源包；本仓库不随包复制Herta、米哈游角色图片、字体、音效或另装的额度挂件。DeepSeek Harness是外部宿主，需要用户独立安装。
+根LICENSE为MIT，版权行为dsh-effort-slider contributors；第三方版权行仍分别保留。docs/preview.png是滑杆效果预览。DeepSeek Harness是外部宿主，需要用户独立安装。
 
 本记录随主分支文档更新；既有v0.2.18标签与ZIP不被替换，其中已包含LICENSE、NOTICE及两份上游MIT许可全文。

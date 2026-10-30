@@ -107,7 +107,7 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 6. 档位点：4px 半透明灰 → 5px 实心白点 + 描边/投影。
 7. 拖动：按住时 `transition:none` + `ratioAt(event)` 连续驱动 `--pos`；松手才取最近档并恢复过渡（`dragPos` state）。
 8. Fast：tooltip 文案从「1.5倍速/无实际作用」改为「快速模式」；点击时 POST `fast` 到 Host。
-9. 工具提示（Fast / 重置为默认）：背景从 `--dsw-alias-bg-layer-2`（大黑塔皮肤下是 transparent）换成不透明菜单面 + 细边框 + 阴影，文字不再浮在页面内容上。
+9. 工具提示（Fast / 重置为默认）：背景从 `--dsw-alias-bg-layer-2`（部分皮肤下是 transparent）换成不透明菜单面 + 细边框 + 阴影，文字不再浮在页面内容上。
 10. Host 状态同步：mount 读取 `/effort-slider/state`，按 live `savedEffort` 对账 arm/disarm；Ultra 档 model-link 加 tooltip。
 11. 档位配色：Low 绿、High 蓝、Ultra 紫，由 rail/popup/trigger 的 `data-effort` 驱动填充、标题与触发器档位文字。
 12. 粒子速度：Low/High+Fast约21.6/54 px/s，Ultra 68 px/s，Ultra+Fast 118 px/s并带1.2秒加速段。
@@ -139,7 +139,7 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - `Fast` 是提示词层速度模式，不改变真实解码速度；文案已明确。
 - 回合内改档：0.2.10 起排队会保存完整模型选择并保留预览；仍要等回合结束才提交，所以「思考中拖档/切模型」对当前回合不生效、对下一回合生效（这是有意的）。
 - 粒子漂移用 CSS transform 动画，Ultra 68 px/s、Ultra+Fast 118 px/s；Low/High+Fast约21.6/54 px/s；`prefers-reduced-motion` 未单独处理，极端省电模式可能停帧。
-- Herta 等第三方皮肤的 CSS 若用 `!important` 重写按钮，可能影响 trigger 观感；滑块本体（div）不受影响。
+- 第三方皮肤的 CSS 若用 `!important` 重写按钮，可能影响 trigger 观感；滑块本体（div）不受影响。
 - Windows 隔离构建与模拟测试通过；原生新profile安装/重启及macOS/Linux未验证（CSS/指针事件理论上通用）。
 
 ## 9. 发布前 checklist
