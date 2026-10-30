@@ -8,7 +8,7 @@ Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追�
 
 > 这不是给模型加额度。它只改变模型的行为倾向；真实计费仍按 token 用量计算，消耗可能上涨，幅度取决于模型和任务；本项目未做统一增幅基准。详见下面的「风险」。
 >
-> Codex 原版有 `Fast` 装饰开关（原 README 注明无实际作用）。本插件把它**做成有实际作用**：
+> 上游社区复刻滑杆的 `Fast` 是装饰开关（上游 README 注明无实际作用）。本插件把它**做成有实际作用**：
 > 打开后按会话注入一段「快速模式」提示词（速度优先、少发散、少重复验证），不改变模型速度、
 > 不改变计费；这是本仓库相对上游唯一的语义改动。另外修正了上游滑轨的填充算法：最右档现在
 > 会填满整条滑轨，不再在手柄后面留半格灰色。
@@ -16,6 +16,16 @@ Ultra = 火力全开**」的 Host 注入：拉到最右时向系统提示词追�
 ![效果预览](docs/preview.png)
 
 当前版本：0.2.18。截图来自早期版本；当前动画速度与下文说明一致。Windows 开发者预发行；原生新 profile 安装、重启及性能基线尚未验收。
+
+
+## 下载、许可与来源
+
+- 下载：[v0.2.18 预发行附件](https://github.com/KshineKX/dsh-effort-slider/releases/tag/v0.2.18)，选择带版本号的插件 ZIP；无需自行构建，先安装 DSH。
+- 本项目代码使用 **MIT License**：允许使用、修改、再分发与商用，须保留适用的版权与许可声明；软件按现状提供，不附担保。详见 [LICENSE](LICENSE)、[NOTICE.md](NOTICE.md) 和 [LICENSES/](LICENSES/)。
+- 本仓库为独立建立的衍生项目，GitHub 元数据不是 fork；代码来源仍须明确保留，不以“独立仓库”表示全部原创。
+- 浏览器 UI 基于 [bakabaicai/DSH-Codex-reasoning-effort-slider](https://github.com/bakabaicai/DSH-Codex-reasoning-effort-slider)（Nachoneko_miao，MIT），Host 注入骨架参考并重写自 [lizilong1993/dsh-unlimited-effort](https://github.com/lizilong1993/dsh-unlimited-effort)（MIT）。本项目增加 Host 联动、完整选择排队、状态错误处理、皮肤兼容样式及动画修改；来源文件哈希见 [PROVENANCE.md](PROVENANCE.md)。
+- 第三方社区插件，与 OpenAI/Codex、DeepSeek 均无官方隶属或背书关系。MIT 声明适用于本项目代码，不表示获得第三方商标或另行安装的角色皮肤素材授权；发行包不含这些皮肤。
+- 当前仍为开发者预发行版。Windows 本机启动与面板打开已验证；用户报告本机试用可用。干净机器、其他平台和性能基线仍未验收。
 
 ## 它是什么
 
@@ -61,7 +71,7 @@ DSH 侧栏 **Plugins → Add plugin**，粘贴仓库地址或本地目录路径�
 **方式二：命令行**
 
 ```bat
-:: 从 GitHub（私有仓库需使用有权限的 GitHub 身份）
+:: 从 GitHub
 "%LOCALAPPDATA%\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:KshineKX/dsh-effort-slider
 
 :: 或从本地目录
