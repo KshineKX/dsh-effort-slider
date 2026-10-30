@@ -1,4 +1,4 @@
-# HANDOFF · dsh-effort-slider 0.2.14
+# HANDOFF · dsh-effort-slider 0.2.15
 
 给 Codex / 审阅者的交接说明。先读这份，再按「验证」跑一遍，最后按「Review 重点」看代码。
 
@@ -47,7 +47,7 @@ dsh.plugin.json             插件描述（client.main）
 
 ```bat
 node scripts/build-client.mjs
-:: expected: built .../client.js (52810 bytes)
+:: expected: built .../client.js (53186 bytes)
 
 node test/host.test.mjs             :: 8 pass
 node test/client-static.test.mjs    :: 14 pass
@@ -58,7 +58,7 @@ node test/client-behavior.test.mjs  :: 9 pass   (真实组件回调 + hook 调�
 node tools/inspect-session.mjs
 ```
 
-构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `03239005…C94216`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
+构建是确定性的：连续两次构建 `client.js` 的 SHA-256 应一致（本机 `C1B6BB6A…EBFEF2`）。测试不联网、不写真实 `~/.dsh`（Host 测试用临时 `DSH_HOME`）。
 
 > 注意：注入发生在 system prompt，不在模型 CoT。`tools/inspect-session.mjs` 读的是 DSH 会话日志
 > `~/.dsh/sessions/<cwd>/<session>/session.v4.jsonl.zstd` 里的 `system/message` 事件（source 为
@@ -147,5 +147,5 @@ system prompt；`tools/inspect-session.mjs` 会解压 `session.v4.jsonl.zstd` �
 - [ ] 保留 `LICENSE`、`NOTICE.md`、`LICENSES/` 两个上游 MIT 全文
 - [ ] 不要把 `~/.dsh/effort-slider.json`、个人路径、profile 备份提交进仓库
 - [ ] 不要提交 `node_modules/`、`.work/`、`dist/`、截图临时文件
-- [ ] 版本号/CHANGELOG 更新（当前 0.2.14）
+- [ ] 版本号/CHANGELOG 更新（当前 0.2.15）
 - [ ] 发布宣传时在简介写清「Fork / 基于 …」并 @ 上游作者（B站同类插件普遍这么做）

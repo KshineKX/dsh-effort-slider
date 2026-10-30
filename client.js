@@ -469,12 +469,17 @@ window.__ModuleLoader__.load({
           const m = motion.current;
           const effortSpeed = current.effort === 'low' ? 0.18 : current.effort === 'high' ? 0.45 : 0.3;
           const speed = current.ultra ? (current.fast ? 1 : 0.65) : current.fast ? effortSpeed : 0.65;
-          // Ultra 单独保持 2.75s÷系数；Ultra+Fast 对齐 Codex 原版约 145–230px/s 并再快一点（240px/s）；
-          // Low/High+Fast 按填充宽度换算恒定 px/s（120×系数）。
+          // 统一用 px/s：Ultra 单独 58.6，Ultra+Fast 只快 1.4 倍（≈82）并平滑过渡；
+          // Low/High+Fast 按填充宽度换算（120×系数）。不再给 Ultra+Fast 单独的 240px/s。
           const fillWidth = 26 + (width - 26) * (current.position || 0);
-          const seconds = current.ultra
-            ? (current.fast ? fillWidth / 240 : 2.75 / Math.max(speed, 0.05))
-            : fillWidth / (120 * Math.max(speed, 0.05));
+          const targetPx = current.ultra
+            ? (current.fast ? 82 : 58.6)
+            : current.fast ? 120 * effortSpeed : 0;
+          if (m.changedAt === 0) { m.speed = targetPx; m.target = targetPx; }
+          if (targetPx !== m.target) { m.from = m.speed; m.target = targetPx; m.changedAt = time; }
+          const blend = Math.min(1, Math.max(0, (time - m.changedAt) / 600));
+          m.speed = m.from + (m.target - m.from) * blend * blend * (3 - 2 * blend);
+          const seconds = m.speed > 0.5 ? fillWidth / m.speed : 2.75;
           if (track) track.style.setProperty('--dsh-codex-reasoning-effort-slider-spark-duration', seconds.toFixed(2) + 's');
           bctx.clearRect(0, 0, 144, 144);
           if (current.open && m.burst && time - m.burst < 520) {
